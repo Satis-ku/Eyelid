@@ -31,7 +31,7 @@ struct OutputDeviceRow: View {
             }
             .padding(.horizontal, 8)
             .frame(height: 24)
-            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(.white.opacity(isSelected ? 0.1 : 0)))
+            .background(.white.opacity(isSelected ? 0.1 : 0), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
