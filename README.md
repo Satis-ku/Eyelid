@@ -27,7 +27,7 @@ Eyelid lives in the notch and blends in with it. Hover over the notch and it ope
 
 - **Blends in.** The closed notch matches the hardware cutout, so you don't notice Eyelid until you need it.
 - **Hover to open.** The notch opens when the pointer reaches it and closes when the pointer leaves. You can add a delay, and Force Touch trackpads give a haptic tick.
-- **Tabs** in the open notch: Now Playing, the file shelf, the clipboard history once you turn it on, Sound, and the translator.
+- **Sections** in the open notch: Now Playing, the file shelf, the clipboard history once you turn it on, Sound, and the translator. Pin the ones you use to the dock along its bottom, in the order you like; the section's name beside the camera opens all of them.
 - **Stays out of the way.** No Dock icon, on every Space and over full-screen apps. Clicks pass through to the menu bar while the notch is closed.
 - **Macs without a notch** get a virtual one at the top of the main display.
 - **Several displays.** By default the notch follows the pointer from display to display. It can also stay on one display, or show on every display, each with its own hover. The volume HUD, battery and output changes, and the clipboard history show up on the display with the pointer.
@@ -90,24 +90,25 @@ Eyelid lives in the notch and blends in with it. Hover over the notch and it ope
 - **⌘C twice.** If you turn it on, copying text twice in a row, anywhere, opens the notch with its translation.
 - **On your Mac.** Apple's Translation does the work offline, with the languages downloaded in **System Settings → General → Language & Region → Translation Languages**. Needs macOS 26 or later.
 - **Knows your languages.** Text goes into your first language in Language & Region, or into your next one if it's in that already. You can pick a language in Settings instead.
-- **Out of the way.** A translation of a double copy closes once the pointer has been over it and left, on a click elsewhere, or after enough time to read it. The translator tab keeps the latest one a click away, with a button to copy it.
+- **Out of the way.** A translation of a double copy closes once the pointer has been over it and left, on a click elsewhere, or after enough time to read it. The translator section keeps the latest one a click away, with a button to copy it.
 - **⌘C twice is off by default,** since it reads what you copy. Passwords that password managers mark as concealed are left alone.
 
 ### Settings
 
-The eye icon in the menu bar opens Settings and quits Eyelid.
+The eye icon in the menu bar opens Settings and quits Eyelid. Settings has a page for each feature, in a sidebar.
 
-| Tab | What's there |
+| Page | What's there |
 |---|---|
-| General | Launch at login, the displays that show a notch |
-| Notch | Hover delay, haptic feedback, live activity, equalizer from the sound, track title |
+| General | Launch at login, the displays that show a notch, hover delay, haptic feedback, the date and the idle clock |
+| Sections | The sections pinned to the dock at the bottom of the open notch, and their order |
+| Now Playing | Live activity, equalizer from the sound, track title, and the shortcut that hides them |
 | Volume & Brightness | The HUD, its level style, output changes, and an icon for each output device |
 | Battery | Battery activity |
 | Shelf | The file shelf, whether dragged-out files leave it, and a button to clear it |
 | Clipboard | The clipboard history, its shortcut, pasting right away, and a button to clear it |
 | Translation | The translator's shortcut, translating with ⌘C twice, and the language to translate into |
 
-<img src="docs/images/settings.png" alt="The Volume & Brightness tab of Eyelid's settings: the HUD with its level style, output changes, and an icon for each output device" width="420">
+<img src="docs/images/settings.png" alt="Eyelid's settings: a sidebar of pages, with Volume & Brightness open, showing the HUD with its level style and a preview, output changes, and an icon for each output device" width="560">
 
 ## Install
 

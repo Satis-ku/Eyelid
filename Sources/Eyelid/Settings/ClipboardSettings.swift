@@ -68,8 +68,6 @@ struct ClipboardSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: SettingsView.width)
-        .fixedSize()
         .task {
             while !Task.isCancelled {
                 access = clipboard.access

@@ -74,8 +74,6 @@ struct TranslationSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: SettingsView.width)
-        .fixedSize()
         .task {
             languages = await translator.supportedLanguages()
         }

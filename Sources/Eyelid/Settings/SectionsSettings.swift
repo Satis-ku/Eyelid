@@ -18,8 +18,6 @@ struct SectionsSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: SettingsView.width)
-        .fixedSize()
     }
 
     private func row(_ section: NotchSection) -> some View {
@@ -78,8 +76,8 @@ struct SectionsSettings: View {
     /// Why a section doesn't show at all, if it doesn't.
     private func note(for section: NotchSection) -> String? {
         switch section {
-        case .shelf where !settings.shelfEnabled: "Off: turn the shelf on in the Shelf tab."
-        case .clipboard where !settings.clipboardEnabled: "Off: turn the history on in the Clipboard tab."
+        case .shelf where !settings.shelfEnabled: "Off: turn the shelf on in Shelf."
+        case .clipboard where !settings.clipboardEnabled: "Off: turn the history on in Clipboard."
         case .translation where !canTranslate: "Needs macOS 26 or later."
         default: nil
         }
