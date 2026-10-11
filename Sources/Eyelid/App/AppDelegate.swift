@@ -63,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         followHUDSetting()
         followClipboardSetting()
         followTranslationSetting()
+        followEqualizerSetting()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -94,6 +95,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.followClipboardSetting()
+            }
+        }
+    }
+
+    /// While the equalizer follows the sound, macOS shows the recording indicator anyway, so every app playing goes
+    /// through Eyelid, and changing an app's volume never switches its sound between paths.
+    private func followEqualizerSetting() {
+        withObservationTracking {
+            appVolumes.routesPlayingApps = settings.equalizerFollowsAudio && AudioLevels.isSupported
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.followEqualizerSetting()
             }
         }
     }

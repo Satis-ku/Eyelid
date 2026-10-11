@@ -18,6 +18,11 @@ extension AppVolumeTap: AppVolumeTapping {}
 
 /// Each app's own volume, as SoundSource does it: an app below full volume plays through a tap of its own, at its
 /// gain. Volumes are kept by app across launches, and taps follow the output and the app's processes.
+///
+/// Switching an app between its own output and a tap leaves a gap of a few milliseconds, since the two paths have
+/// different latencies. So switches happen where they can't be heard when they can: an app back at full volume keeps
+/// its tap until it's quiet. And while `routesPlayingApps` is on, every app playing goes through a tap from its first
+/// sound, so turning it down or up never switches anything.
 @MainActor
 @Observable
 final class AppVolumes {
@@ -37,31 +42,52 @@ final class AppVolumes {
     /// Volumes below full, by app. Apps at full volume aren't listed, and play as they do without Eyelid.
     private(set) var volumes: [String: Float]
 
+    /// Whether every app playing goes through a tap, at full volume unless turned down. On while the equalizer
+    /// follows the sound, since macOS shows the recording indicator then anyway. A tap stays `quietGrace` after its
+    /// app goes quiet, so a pause doesn't switch, and then goes, so the output can sleep.
+    @ObservationIgnored var routesPlayingApps = false {
+        didSet {
+            if routesPlayingApps != oldValue {
+                sync()
+            }
+        }
+    }
+
     @ObservationIgnored private let defaults: any SettingsStore
     @ObservationIgnored private let apps: @MainActor () -> [AudioApp]
     @ObservationIgnored private let output: @MainActor () -> (AudioDeviceID, String)?
     @ObservationIgnored private let makeTap: @MainActor (Request) -> (any AppVolumeTapping)?
+    @ObservationIgnored private let now: @MainActor () -> ContinuousClock.Instant
     @ObservationIgnored private(set) var taps: [String: any AppVolumeTapping] = [:]
+    /// When each app was last heard playing.
+    @ObservationIgnored private var lastHeard: [String: ContinuousClock.Instant] = [:]
     @ObservationIgnored private var listeners: [(AudioObjectPropertyAddress, AudioObjectPropertyListenerBlock)] = []
-    /// Looks again for apps gone quiet while a tap lingers.
-    @ObservationIgnored private(set) var quietTask: Task<Void, Never>?
-    /// How often, which tests shorten.
-    @ObservationIgnored let quietCheckInterval: Duration
+    /// Listeners on each process for its sound starting and stopping, by process.
+    @ObservationIgnored private var processListeners: [AudioObjectID: AudioObjectPropertyListenerBlock] = [:]
+    /// Looks again later: for apps gone quiet, and a tap's grace running out.
+    @ObservationIgnored private(set) var checkTask: Task<Void, Never>?
+    /// How often, at most, while there's something to look for. Tests shorten it.
+    @ObservationIgnored let checkInterval: Duration
+    @ObservationIgnored let quietGrace: Duration
 
     private static let key = "appVolumes"
 
     init(
         defaults: any SettingsStore = UserDefaults.standard,
-        apps: @escaping @MainActor () -> [AudioApp] = AudioApps.all,
+        apps: @escaping @MainActor () -> [AudioApp] = { AudioApps.all() },
         output: @escaping @MainActor () -> (AudioDeviceID, String)? = AppVolumes.defaultOutput,
         makeTap: @escaping @MainActor (Request) -> (any AppVolumeTapping)? = AppVolumes.systemTap,
-        quietCheckInterval: Duration = .seconds(1)
+        now: @escaping @MainActor () -> ContinuousClock.Instant = { .now },
+        checkInterval: Duration = .seconds(2),
+        quietGrace: Duration = .seconds(5 * 60)
     ) {
         self.defaults = defaults
-        self.quietCheckInterval = quietCheckInterval
         self.apps = apps
         self.output = output
         self.makeTap = makeTap
+        self.now = now
+        self.checkInterval = checkInterval
+        self.quietGrace = quietGrace
         let stored = defaults.object(forKey: Self.key) as? [String: Double] ?? [:]
         volumes = stored.mapValues(Float.init).filter { $0.value < 1 }
     }
@@ -71,7 +97,7 @@ final class AppVolumes {
     }
 
     /// Sets an app's volume. While the slider moves, the tap only changes its gain; `sync` then settles which apps
-    /// need one: an app dragged back to full volume plays as it does without Eyelid once it's quiet.
+    /// need one.
     func setVolume(_ volume: Float, for app: AudioApp) {
         let volume = min(max(volume, 0), 1)
         let key = app.volumeKey
@@ -103,29 +129,32 @@ final class AppVolumes {
         sync()
     }
 
-    /// Plays every app with a volume of its own through a tap on the current output, and the others as they are.
-    ///
-    /// Switching an app between its own output and a tap leaves a gap of a few milliseconds, since the two paths have
-    /// different latencies. So an app turned back up to full volume keeps its tap, at full gain, while it plays, and
-    /// loses it once it's quiet, where the switch can't be heard.
+    /// Gives a tap to every app that needs one on the current output, and takes it from the others once that can't
+    /// be heard.
     func sync() {
         guard let (device, uid) = output() else {
             stopAll()
             return
         }
+        let now = now()
+        let current = apps()
         var wanted: [String: AudioApp] = [:]
-        var lingering: [String: AudioApp] = [:]
-        for app in apps() where !app.processes.isEmpty {
-            if volumes[app.volumeKey] != nil {
-                wanted[app.volumeKey] = app
-            } else if taps[app.volumeKey] != nil, app.isPlaying {
-                lingering[app.volumeKey] = app
+        var kept: [String: AudioApp] = [:]
+        for app in current where !app.processes.isEmpty {
+            let key = app.volumeKey
+            if app.isPlaying {
+                lastHeard[key] = now
+            }
+            if volumes[key] != nil || (routesPlayingApps && app.isPlaying) {
+                wanted[key] = app
+            } else if taps[key] != nil, app.isPlaying || isInGrace(key, at: now) {
+                kept[key] = app
             }
         }
 
         for (key, tap) in taps {
-            // A new output, or a helper that came or went, needs a new tap, unless the app is back at full volume.
-            if let app = wanted[key] ?? lingering[key], tap.outputUID == uid, tap.processes == app.processes {
+            // A new output, or a helper that came or went, needs a new tap, unless the app doesn't need one anymore.
+            if let app = wanted[key] ?? kept[key], tap.outputUID == uid, tap.processes == app.processes {
                 continue
             }
             tap.stop()
@@ -135,31 +164,52 @@ final class AppVolumes {
             let request = Request(processes: app.processes, output: device, outputUID: uid, gain: volumes[key] ?? 1)
             if let tap = makeTap(request) {
                 taps[key] = tap
-                logger.debug("Playing \(app.name, privacy: .public) at its own volume")
+                logger.debug("Playing \(app.name, privacy: .public) through Eyelid")
             }
         }
-        waitForQuietIfNeeded()
+
+        watchProcesses(current.flatMap(\.processes))
+        scheduleCheck(at: now)
     }
 
-    /// Whether an app back at full volume still plays through its tap, which goes once the app is quiet.
-    var hasLingeringTaps: Bool {
-        taps.keys.contains { volumes[$0] == nil }
+    private func isInGrace(_ key: String, at now: ContinuousClock.Instant) -> Bool {
+        guard routesPlayingApps, let heard = lastHeard[key] else { return false }
+        return now - heard < quietGrace
     }
 
-    /// Core Audio says nothing when an app stops sending sound, so while a tap lingers, `sync` looks again every
-    /// second.
-    private func waitForQuietIfNeeded() {
-        guard hasLingeringTaps else {
-            quietTask?.cancel()
-            quietTask = nil
-            return
+    /// Hears each process start and stop sending sound, so a playing app gets its tap from its first sound.
+    private func watchProcesses(_ processes: [AudioObjectID]) {
+        guard Self.isSupported else { return }
+        let address = AudioProperty.address(kAudioProcessPropertyIsRunningOutput)
+        let current = Set(processes)
+        for (process, listener) in processListeners where !current.contains(process) {
+            var registered = address
+            AudioObjectRemovePropertyListenerBlock(process, &registered, .main, listener)
+            processListeners[process] = nil
         }
-        guard quietTask == nil else { return }
-        quietTask = Task { [weak self, quietCheckInterval] in
-            try? await Task.sleep(for: quietCheckInterval)
+        for process in current where processListeners[process] == nil {
+            let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+                MainActor.assumeIsolated {
+                    self?.sync()
+                }
+            }
+            var registered = address
+            if AudioObjectAddPropertyListenerBlock(process, &registered, .main, listener) == noErr {
+                processListeners[process] = listener
+            }
+        }
+    }
+
+    /// Looks again in a while, as long as a tap may need to go or an app may start playing: the listeners should
+    /// catch both, and this makes sure.
+    private func scheduleCheck(at now: ContinuousClock.Instant) {
+        checkTask?.cancel()
+        checkTask = nil
+        guard routesPlayingApps || !taps.isEmpty else { return }
+        checkTask = Task { [weak self, checkInterval] in
+            try? await Task.sleep(for: checkInterval)
             guard let self, !Task.isCancelled else { return }
-            quietTask = nil
-            // Looks again later on its own, while a tap still lingers.
+            checkTask = nil
             sync()
         }
     }

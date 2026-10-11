@@ -131,6 +131,7 @@ struct AppVolumesTests {
         var apps: [AudioApp] = []
         var output: (AudioDeviceID, String)? = (1, "speakers")
         var made: [FakeTap] = []
+        var now = ContinuousClock.now
     }
 
     private let store = InMemorySettingsStore()
@@ -147,7 +148,8 @@ struct AppVolumesTests {
                 world.made.append(tap)
                 return tap
             },
-            quietCheckInterval: .milliseconds(10)
+            now: { world.now },
+            checkInterval: .milliseconds(10)
         )
     }
 
@@ -188,14 +190,71 @@ struct AppVolumesTests {
         volumes.sync()
         #expect(!tap.isStopped)
         #expect(tap.gain == 1)
-        #expect(volumes.hasLingeringTaps)
 
         world.apps = [app("Music", processes: [10], isPlaying: false)]
-        await volumes.quietTask?.value
+        await volumes.checkTask?.value
 
         #expect(tap.isStopped)
         #expect(volumes.taps.isEmpty)
-        #expect(volumes.quietTask == nil)
+        #expect(volumes.checkTask == nil)
+    }
+
+    // MARK: - Every app playing through Eyelid
+
+    @Test func whileRoutingEveryAppPlayingHasATapAtFullVolume() throws {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10], isPlaying: true), app("Chat", processes: [20])]
+
+        volumes.routesPlayingApps = true
+
+        #expect(world.made.count == 1)
+        let tap = try #require(world.made.first)
+        #expect(tap.processes == [10])
+        #expect(tap.gain == 1)
+    }
+
+    /// The point of routing: turning a playing app down changes its gain, with no new tap.
+    @Test func whileRoutingAVolumeChangeOnlyChangesTheGain() throws {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10], isPlaying: true)]
+        volumes.routesPlayingApps = true
+        let tap = try #require(world.made.first)
+
+        volumes.setVolume(0.3, for: world.apps[0])
+        volumes.setVolume(1, for: world.apps[0])
+        volumes.sync()
+
+        #expect(world.made.count == 1)
+        #expect(tap.gain == 1)
+        #expect(!tap.isStopped)
+    }
+
+    @Test func whileRoutingAQuietAppKeepsItsTapForAWhile() throws {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10], isPlaying: true)]
+        volumes.routesPlayingApps = true
+        let tap = try #require(world.made.first)
+
+        world.apps = [app("Music", processes: [10], isPlaying: false)]
+        world.now += .seconds(60)
+        volumes.sync()
+        #expect(!tap.isStopped)
+
+        world.now += volumes.quietGrace
+        volumes.sync()
+        #expect(tap.isStopped)
+    }
+
+    @Test func turningRoutingOffLeavesOnlyAppsTurnedDown() {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10], isPlaying: true), app("Video", processes: [20], isPlaying: true)]
+        volumes.routesPlayingApps = true
+        volumes.setVolume(0.5, for: world.apps[1])
+        world.apps = [app("Music", processes: [10]), app("Video", processes: [20])]
+
+        volumes.routesPlayingApps = false
+
+        #expect(world.made.filter { !$0.isStopped }.map(\.processes) == [[20]])
     }
 
     @Test func backAtFullVolumeTheTapGoesOnceLetGo() throws {

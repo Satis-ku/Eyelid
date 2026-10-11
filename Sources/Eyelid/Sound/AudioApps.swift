@@ -35,12 +35,13 @@ enum AudioApps {
     /// The apps playing, by name, with Eyelid and the system's own services left out. Empty before macOS 14.2.
     @MainActor
     static func playing() -> [AudioApp] {
-        all().filter(\.isPlaying)
+        all(withIcons: true).filter(\.isPlaying)
     }
 
-    /// Every app with a process Core Audio knows, playing or not, by name.
+    /// Every app with a process Core Audio knows, playing or not, by name. Icons take a while to load, so only what
+    /// shows them asks for them.
     @MainActor
-    static func all() -> [AudioApp] {
+    static func all(withIcons: Bool = false) -> [AudioApp] {
         guard #available(macOS 14.2, *) else { return [] }
         let objects: [AudioObjectID] = AudioProperty.array(
             AudioProperty.address(kAudioHardwarePropertyProcessObjectList),
@@ -68,7 +69,7 @@ enum AudioApps {
                 name: name,
                 bundleIdentifier: app.bundleIdentifier,
                 bundleURL: app.bundleURL,
-                icon: app.icon
+                icon: withIcons ? app.icon : nil
             )
         }
     }

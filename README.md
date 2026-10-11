@@ -59,7 +59,7 @@ Eyelid lives in the notch and blends in with it. Hover over the notch and it ope
 
 - **Like Control Center's Sound menu,** in the open notch: the volume, and the outputs to switch between, with the charge of AirPods and Beats.
 - **The apps playing,** each with its icon, beside the outputs. A click on one brings it forward.
-- **A volume for each app** (macOS 14.2 or later), as SoundSource does: turn Yandex Music down under a call, or a game under the music. Eyelid remembers each app's volume. An app below full volume plays through Eyelid, so macOS shows the recording indicator while it does; at full volume it plays as it does without Eyelid.
+- **A volume for each app** (macOS 14.2 or later), as SoundSource does: turn Yandex Music down under a call, or a game under the music. Eyelid remembers each app's volume. An app below full volume plays through Eyelid, so macOS shows the recording indicator while it does; at full volume it plays as it does without Eyelid. Moving an app between the two leaves a click of a few milliseconds, so Eyelid makes that switch when the app is quiet where it can. While **Equalizer follows the sound** is on, which shows the indicator anyway, every app playing goes through Eyelid from its first sound, and volumes change with no click at all.
 
 ### Battery
 

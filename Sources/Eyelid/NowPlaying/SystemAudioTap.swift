@@ -32,7 +32,9 @@ final class SystemAudioTap: @unchecked Sendable {
     func start() -> Bool {
         stop()
 
-        let description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+        // Everything but Eyelid's own sound: an app at its own volume plays through Eyelid, and the tap would hear it
+        // twice, from the app, which it hears though macOS mutes it, and from Eyelid.
+        let description = CATapDescription(stereoGlobalTapButExcludeProcesses: Self.ownProcess.map { [$0] } ?? [])
         description.uuid = UUID()
         description.name = "Eyelid equalizer"
         description.isPrivate = true
@@ -79,6 +81,23 @@ final class SystemAudioTap: @unchecked Sendable {
         }
         logger.debug("Listening at \(sampleRate, privacy: .public) Hz")
         return true
+    }
+
+    /// Eyelid's own process, as Core Audio knows it.
+    private static var ownProcess: AudioObjectID? {
+        var address = AudioProperty.address(kAudioHardwarePropertyTranslatePIDToProcessObject)
+        var pid = ProcessInfo.processInfo.processIdentifier
+        var object = AudioObjectID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            UInt32(MemoryLayout<pid_t>.size),
+            &pid,
+            &size,
+            &object
+        )
+        return status == noErr && object != kAudioObjectUnknown ? object : nil
     }
 
     func stop() {
