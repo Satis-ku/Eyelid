@@ -8,7 +8,6 @@ struct TranslationPanel: View {
     /// keeps it until then.
     let isTyping: Bool
     let beginTyping: @MainActor () -> Void
-    @FocusState private var isFieldFocused: Bool
     @State private var didCopy = false
 
     var body: some View {
@@ -21,9 +20,6 @@ struct TranslationPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.top, TranslationLayout.topPadding)
-        .onChange(of: isTyping, initial: true) { _, isTyping in
-            isFieldFocused = isTyping
-        }
     }
 
     private var header: some View {
@@ -57,32 +53,27 @@ struct TranslationPanel: View {
     }
 
     private var field: some View {
-        TextField("Type or paste text to translate", text: $translator.input, axis: .vertical)
-            .textFieldStyle(.plain)
-            .font(.system(size: TranslationLayout.inputSize))
-            .foregroundStyle(.white.opacity(0.85))
-            .lineLimit(1...TranslationLayout.inputLines)
-            .focused($isFieldFocused)
-            .onChange(of: translator.input) {
-                translator.inputDidChange()
+        TranslationField(
+            text: $translator.input,
+            isTyping: isTyping,
+            onChange: translator.inputDidChange,
+            onSubmit: translator.translateNow
+        )
+        .frame(height: TranslationLayout.inputHeight(translator.input))
+        .padding(.horizontal, TranslationLayout.inputPadding.width)
+        .padding(.vertical, TranslationLayout.inputPadding.height)
+        .background(
+            .white.opacity(isTyping ? 0.12 : 0.07),
+            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+        )
+        .overlay {
+            if !isTyping {
+                // A click asks for the keyboard, which the panel only takes on cue.
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: beginTyping)
             }
-            .onSubmit {
-                translator.translateNow()
-            }
-            .padding(.horizontal, TranslationLayout.inputPadding.width)
-            .padding(.vertical, TranslationLayout.inputPadding.height)
-            .background(
-                .white.opacity(isTyping ? 0.12 : 0.07),
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-            )
-            .overlay {
-                if !isTyping {
-                    // Clicks don't reach a field in a panel without the keyboard, so this asks for it.
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture(perform: beginTyping)
-                }
-            }
+        }
     }
 
     @ViewBuilder
@@ -153,14 +144,25 @@ enum TranslationLayout {
     static let translatingHeight: CGFloat = 18
     static let failureHeight: CGFloat = 54
 
-    /// How tall the panel would like to be for `input` and `request`, `width` wide.
+    /// The width of the open notch's content, which the panel fills.
     @MainActor
-    static func height(input: String, request: Translator.Request?, width: CGFloat) -> CGFloat {
-        let inputFont = NSFont.systemFont(ofSize: inputSize)
-        let inputWidth = width - 2 * inputPadding.width
-        let lines = lineHeight(inputFont)
-        let inputHeight = min(max(textHeight(input, font: inputFont, width: inputWidth), lines), lines * CGFloat(inputLines))
-        var height = topPadding + headerHeight + spacing + inputHeight + 2 * inputPadding.height
+    static var width: CGFloat {
+        NotchViewModel.Layout.openWidth - 2 * NotchViewModel.Layout.openHorizontalPadding
+    }
+
+    /// How tall the field is for `input`: a line at least, and `inputLines` at most, after which it scrolls.
+    @MainActor
+    static func inputHeight(_ input: String) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: inputSize)
+        let line = lineHeight(font)
+        let text = textHeight(input, font: font, width: width - 2 * inputPadding.width)
+        return min(max(text, line), line * CGFloat(inputLines))
+    }
+
+    /// How tall the panel would like to be for `input` and `request`.
+    @MainActor
+    static func height(input: String, request: Translator.Request?) -> CGFloat {
+        var height = topPadding + headerHeight + spacing + inputHeight(input) + 2 * inputPadding.height
         guard let request else { return ceil(height) }
 
         let translationFont = NSFont.systemFont(ofSize: translationSize, weight: .medium)

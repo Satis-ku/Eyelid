@@ -165,8 +165,7 @@ final class NotchViewModel {
 
     /// As tall as the translation needs, within the notch's limits; a longer one scrolls.
     var translationContentHeight: CGFloat {
-        let width = Layout.openWidth - 2 * Layout.openHorizontalPadding
-        let panel = TranslationLayout.height(input: translator.input, request: translator.request, width: width)
+        let panel = TranslationLayout.height(input: translator.input, request: translator.request)
         let needed = panel + Layout.openBottomPadding
         return min(max(needed, Layout.openContentHeight), Layout.clipboardContentHeight)
     }
