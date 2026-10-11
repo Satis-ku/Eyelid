@@ -15,7 +15,9 @@ struct EyelidApp: App {
                 shelf: appDelegate.shelf,
                 clipboard: appDelegate.clipboard,
                 clipboardShortcut: appDelegate.clipboardShortcut,
-                lidShortcut: appDelegate.lidShortcut
+                lidShortcut: appDelegate.lidShortcut,
+                translator: appDelegate.translator,
+                translationShortcut: appDelegate.translationShortcut
             )
         }
     }

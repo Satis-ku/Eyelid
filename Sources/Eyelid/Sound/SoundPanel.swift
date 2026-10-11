@@ -30,7 +30,7 @@ struct SoundPanel: View {
                 Button("Sound Settings…") {
                     NSWorkspace.shared.open(Self.soundSettings)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PressableButtonStyle(hoverScale: 1.05))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.5))
             }

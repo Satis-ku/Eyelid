@@ -106,6 +106,48 @@ struct AppSettingsTests {
         #expect(AppSettings.openDelayOptions.first == 0)
         #expect(AppSettings.openDelayOptions == AppSettings.openDelayOptions.sorted())
     }
+
+    // MARK: - Sections
+
+    @Test func sectionsStartInOrderAndAllPinned() {
+        let settings = AppSettings(defaults: InMemorySettingsStore())
+
+        #expect(settings.sectionOrder == NotchSection.allCases)
+        #expect(settings.pinnedSections == Set(NotchSection.allCases))
+    }
+
+    @Test func sectionOrderAndPinsAreKept() {
+        let store = InMemorySettingsStore()
+        let settings = AppSettings(defaults: store)
+
+        settings.moveSection(.sound, to: .nowPlaying)
+        settings.setPinned(.clipboard, false)
+
+        let reopened = AppSettings(defaults: store)
+        #expect(reopened.sectionOrder == [.sound, .nowPlaying, .shelf, .clipboard, .translation])
+        #expect(reopened.pinnedSections == [.sound, .nowPlaying, .shelf, .translation])
+    }
+
+    @Test func droppingASectionOnAnotherTakesItsPlace() {
+        let settings = AppSettings(defaults: InMemorySettingsStore())
+
+        settings.moveSection(.nowPlaying, to: .clipboard)
+        #expect(settings.sectionOrder == [.shelf, .clipboard, .nowPlaying, .sound, .translation])
+
+        settings.moveSection(.translation, to: .shelf)
+        #expect(settings.sectionOrder == [.translation, .shelf, .clipboard, .nowPlaying, .sound])
+    }
+
+    @Test func newSectionsJoinAtTheEndUnpinned() {
+        let store = InMemorySettingsStore()
+        store.set(["sound", "nowPlaying", "removedLongAgo"], forKey: "sectionOrder")
+        store.set(["sound"], forKey: "pinnedSections")
+
+        let settings = AppSettings(defaults: store)
+
+        #expect(settings.sectionOrder == [.sound, .nowPlaying, .shelf, .clipboard, .translation])
+        #expect(settings.pinnedSections == [.sound])
+    }
 }
 
 /// Keeps settings in memory, so tests neither read nor write the real preferences.

@@ -18,6 +18,8 @@ final class NotchWindowController {
     private var hudTask: Task<Void, Never>?
     private var outputTask: Task<Void, Never>?
     private var trackTitleTask: Task<Void, Never>?
+    /// Closes a translation nobody looked at, once it has had time to be read.
+    private var translationTask: Task<Void, Never>?
     /// The drag pasteboard changes when a drag starts, which tells drags apart from other mouse moves.
     private var dragPasteboardChangeCount = NSPasteboard(name: .drag).changeCount
     /// Handles the arrow keys, Return, Delete and Escape while the clipboard history has the keyboard.
@@ -30,6 +32,7 @@ final class NotchWindowController {
         battery: BatteryService,
         shelf: Shelf,
         clipboard: ClipboardHistory,
+        translator: Translator,
         settings: AppSettings
     ) {
         self.settings = settings
@@ -40,6 +43,7 @@ final class NotchWindowController {
             battery: battery,
             shelf: shelf,
             clipboard: clipboard,
+            translator: translator,
             settings: settings
         )
 
@@ -61,6 +65,9 @@ final class NotchWindowController {
         }
         model.openSound = { [weak self] in
             self?.openSound()
+        }
+        model.typeTranslation = { [weak self] in
+            self?.beginTypingTranslation()
         }
         // Clicking another window takes the keyboard away from the clipboard history, which then goes away.
         observers.append(NotificationCenter.default.addObserver(
@@ -89,7 +96,7 @@ final class NotchWindowController {
             NotificationCenter.default.removeObserver(observer)
         }
         observers = []
-        for task in [openTask, pollTask, batteryEventTask, hudTask, outputTask, trackTitleTask] {
+        for task in [openTask, pollTask, batteryEventTask, hudTask, outputTask, trackTitleTask, translationTask] {
             task?.cancel()
         }
         panel.orderOut(nil)
@@ -197,6 +204,49 @@ final class NotchWindowController {
         model.trackTitle = nil
     }
 
+    // MARK: - Translation
+
+    /// Opens the translator with the keyboard, wherever the pointer is, to type or paste text; or closes it.
+    func toggleTranslator() {
+        if model.isTypingTranslation {
+            close()
+            return
+        }
+        beginTypingTranslation()
+    }
+
+    /// Gives the translation's field the keyboard, and holds the notch open until Escape or a click elsewhere.
+    private func beginTypingTranslation() {
+        model.isTranslationHeld = false
+        translationTask?.cancel()
+        translationTask = nil
+        if model.state == .open {
+            model.select(.translation)
+        } else {
+            open(on: .translation)
+        }
+        model.isHeldOpen = true
+        takeKeyboard()
+    }
+
+    /// Opens the notch on the translation of what was just copied, wherever the pointer is. It stays open until the
+    /// pointer has been over it and left, or a click elsewhere, or for as long as it takes to read if neither comes.
+    func showTranslation() {
+        if model.isHeldOpen {
+            close()
+        }
+        open(on: .translation)
+        model.isTranslationHeld = true
+
+        let readingTime = NotchViewModel.Layout.translationReadingTime(for: model.translator.request?.text ?? "")
+        translationTask?.cancel()
+        translationTask = Task { [weak self] in
+            try? await Task.sleep(for: readingTime)
+            guard !Task.isCancelled, let self, model.isTranslationHeld else { return }
+            close()
+        }
+    }
+
     // MARK: - Sound
 
     /// Opens the notch on the Sound tab, after a click on the equalizer.
@@ -234,8 +284,8 @@ final class NotchWindowController {
         switch type {
         case .leftMouseDown:
             dragPasteboardChangeCount = NSPasteboard(name: .drag).changeCount
-            // A click anywhere else puts away the clipboard history, as with a menu.
-            if model.isHeldOpen, !model.bodyRect.contains(NSEvent.mouseLocation) {
+            // A click anywhere else puts away the clipboard history, as with a menu, and a translation.
+            if model.isHeldOpen || model.isTranslationHeld, !model.bodyRect.contains(NSEvent.mouseLocation) {
                 close()
             }
         case .leftMouseDragged:
@@ -283,11 +333,14 @@ final class NotchWindowController {
             openTask?.cancel()
             openTask = nil
         case (.open, false):
-            if !model.isHeldOpen {
+            if !model.isHeldOpen, !model.isTranslationHeld {
                 close()
             }
         case (.open, true):
-            break
+            // Once the pointer has been over a translation, it closes as the notch always does.
+            if model.isTranslationHeld {
+                model.isTranslationHeld = false
+            }
         }
     }
 
@@ -314,6 +367,7 @@ final class NotchWindowController {
         openTask?.cancel()
         openTask = nil
         dismissTrackTitle()
+        model.showsSectionMenu = false
         if let tab {
             model.tab = tab
         } else if settings.shelfEnabled, model.isDraggingFiles {
@@ -344,11 +398,15 @@ final class NotchWindowController {
         logger.debug("Closed")
         let wasPinned = model.isHeldOpen
         model.state = .closed
+        model.showsSectionMenu = false
         model.isDropTargeted = false
         model.isHeldOpen = false
         if wasPinned {
             giveUpKeyboard()
         }
+        model.isTranslationHeld = false
+        translationTask?.cancel()
+        translationTask = nil
         panel.ignoresMouseEvents = true
         pollTask?.cancel()
         pollTask = nil
@@ -365,12 +423,17 @@ extension NotchWindowController {
 
     /// Whether the clipboard history is open and holding the notch open.
     var isHoldingClipboardOpen: Bool {
-        model.isHeldOpen
+        model.isHeldOpen && model.tab == .clipboard
+    }
+
+    /// Whether the translation's field has the keyboard.
+    var isTypingTranslation: Bool {
+        model.isTypingTranslation
     }
 
     /// The clipboard shortcut opens the history, wherever the pointer is, and closes it again.
     func toggleClipboard() {
-        if model.isHeldOpen {
+        if isHoldingClipboardOpen {
             close()
             return
         }
@@ -386,12 +449,14 @@ extension NotchWindowController {
     /// Makes the panel key, so the arrow keys, Return, Delete and Escape reach the history, and only while it's
     /// open: the app in front stays active, and no other app loses those keys.
     private func takeKeyboard() {
+        guard keyMonitor == nil else { return }
         panel.allowsKey = true
         panel.makeKey()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let key = ClipboardKey(event: event)
+            let editing = TextEditingKey(event: event)
             let isHandled = MainActor.assumeIsolated {
-                self?.handle(key) ?? false
+                self?.handle(key, editing: editing) ?? false
             }
             return isHandled ? nil : event
         }
@@ -411,7 +476,19 @@ extension NotchWindowController {
         }
     }
 
-    private func handle(_ key: ClipboardKey) -> Bool {
+    private func handle(_ key: ClipboardKey, editing: TextEditingKey?) -> Bool {
+        // The translation's field takes the keys itself, but for Escape, which closes the notch, and the editing
+        // shortcuts, which it gets from here.
+        guard model.tab == .clipboard else {
+            if key == .escape {
+                close()
+                return true
+            }
+            if let editing {
+                return NSApp.sendAction(editing.action, to: nil, from: nil)
+            }
+            return false
+        }
         switch key {
         case .up:
             model.moveClipboardSelection(by: -1)

@@ -10,6 +10,7 @@ final class NotchCoordinator {
     private let battery: BatteryService
     private let shelf: Shelf
     private let clipboard: ClipboardHistory
+    private let translator: Translator
     private let settings: AppSettings
     private var controllers: [NotchWindowController] = []
     private var pointerMonitors: [Any] = []
@@ -25,6 +26,9 @@ final class NotchCoordinator {
         clipboard: ClipboardHistory,
         clipboardShortcut: Shortcut,
         lidShortcut: Shortcut,
+        translator: Translator,
+        doubleCopy: DoubleCopyWatcher,
+        translationShortcut: Shortcut,
         hud: HUDService,
         settings: AppSettings
     ) {
@@ -33,6 +37,7 @@ final class NotchCoordinator {
         self.battery = battery
         self.shelf = shelf
         self.clipboard = clipboard
+        self.translator = translator
         self.settings = settings
 
         pointerDisplay = NSScreen.withPointer?.displayID
@@ -68,6 +73,12 @@ final class NotchCoordinator {
         clipboardShortcut.onPress = { [weak self] in
             self?.toggleClipboard()
         }
+        doubleCopy.onDoubleCopy = { [weak self] in
+            self?.translateCopiedText()
+        }
+        translationShortcut.onPress = { [weak self] in
+            self?.toggleTranslator()
+        }
     }
 
     /// The notch on the display with the pointer, which is where the user is looking.
@@ -88,6 +99,22 @@ final class NotchCoordinator {
         } else {
             activeNotch?.toggleClipboard()
         }
+    }
+
+    /// Opens the translator to type in where the user is looking, or closes it wherever it's open.
+    private func toggleTranslator() {
+        guard translator.isAvailable else { return }
+        if let open = controllers.first(where: \.isTypingTranslation) {
+            open.toggleTranslator()
+        } else {
+            activeNotch?.toggleTranslator()
+        }
+    }
+
+    /// Translates what was copied, and shows it where the user is looking.
+    private func translateCopiedText() {
+        translator.translateCopiedText()
+        activeNotch?.showTranslation()
     }
 
     // MARK: - Displays
@@ -152,6 +179,7 @@ final class NotchCoordinator {
                     battery: battery,
                     shelf: shelf,
                     clipboard: clipboard,
+                    translator: translator,
                     settings: settings
                 ))
             }

@@ -22,6 +22,7 @@ struct NotchViewModelTests {
             battery: BatteryService(),
             shelf: Shelf(store: InMemorySettingsStore(), promisedFilesDirectory: FileManager.default.temporaryDirectory),
             clipboard: ClipboardHistory(pasteboard: .withUniqueName(), pinnedFile: nil),
+            translator: Translator(settings: settings, engine: .fake(), pasteboard: .withUniqueName()),
             settings: settings
         )
     }
@@ -38,7 +39,10 @@ struct NotchViewModelTests {
         let model = makeModel()
         model.state = .open
 
-        #expect(model.bodySize == CGSize(width: NotchViewModel.Layout.openWidth, height: 32 + 108))
+        #expect(model.bodySize == CGSize(
+            width: NotchViewModel.Layout.openWidth,
+            height: 32 + NotchViewModel.Layout.openContentHeight + NotchViewModel.Layout.dockHeight
+        ))
         #expect(model.topRadius == NotchViewModel.Layout.openTopRadius)
     }
 
@@ -94,18 +98,28 @@ struct NotchViewModelTests {
         #expect(NotchViewModel.Layout.trackTitleInset + TrackTitle.fontSize < NotchViewModel.Layout.trackTitleHeight)
     }
 
-    @Test func soundTabHasItsOwnHeight() {
+    /// Switching sections in the dock leaves the pointer where it was, over the notch, so it stays open.
+    @Test func everySectionIsAsTall() {
         let model = makeModel()
         model.state = .open
+        model.settings.clipboardEnabled = true
+        let height = 32 + NotchViewModel.Layout.openContentHeight + NotchViewModel.Layout.dockHeight
 
-        model.tab = .sound
+        for section in model.sections {
+            model.select(section)
+            #expect(model.bodySize.height == height)
+        }
+        model.showsSectionMenu = true
+        #expect(model.bodySize.height == height)
+        #expect(model.windowSize.height > height)
+    }
 
-        #expect(model.showsSound)
-        // Before the outputs are read, as tall as the other tabs.
-        #expect(model.bodySize.height == 32 + model.soundContentHeight)
-        #expect(model.soundContentHeight >= NotchViewModel.Layout.openContentHeight)
-        #expect(model.soundContentHeight <= NotchViewModel.Layout.soundContentHeight)
-        #expect(model.windowSize.height >= model.bodySize.height)
+    @Test func soundShowsAsManyOutputsAsFit() {
+        let layout = NotchViewModel.Layout.self
+        let rows = CGFloat(layout.soundMaxRows)
+
+        #expect(layout.soundFixedHeight + rows * layout.soundRowHeight <= layout.openContentHeight)
+        #expect(layout.soundFixedHeight + (rows + 1) * layout.soundRowHeight > layout.openContentHeight)
     }
 
     @Test func equalizerIsClickableOnlyWhileItShows() {
@@ -210,7 +224,8 @@ struct NotchViewModelTests {
 
         #expect(model.hoverRect.contains(belowTheHardwareNotch))
         #expect(model.hoverRect.contains(CGPoint(x: 756 - 225, y: 982 - 145)))
-        #expect(!model.hoverRect.contains(CGPoint(x: 756, y: 982 - 200)))
+        // Below the dock, past the margin.
+        #expect(!model.hoverRect.contains(CGPoint(x: 756, y: 982 - 300)))
     }
 
     @Test func draggedFilesOpenTheNotchFromFartherAway() {
@@ -268,17 +283,15 @@ struct NotchViewModelTests {
         #expect(model.shelf.items.isEmpty)
     }
 
-    @Test func clipboardHistoryGetsATallerNotch() {
+    @Test func clipboardHistoryShowsOnceItsOn() {
         let model = makeModel()
         model.state = .open
         model.tab = .clipboard
-        #expect(model.bodySize.height == 32 + NotchViewModel.Layout.openContentHeight)
+        #expect(!model.showsClipboard)
 
         model.settings.clipboardEnabled = true
 
         #expect(model.showsClipboard)
-        #expect(model.bodySize.height == 32 + NotchViewModel.Layout.clipboardContentHeight)
-        #expect(model.windowSize.height > model.bodySize.height)
     }
 
     @Test func clipboardSelectionStaysInTheList() throws {
@@ -370,5 +383,56 @@ struct NotchViewModelTests {
         model.settings.clipboardPastesAfterChoosing = true
         model.choose(entry)
         #expect(pastes == 1)
+    }
+
+    // MARK: - Sections
+
+    @Test func dockHoldsThePinnedSectionsInOrder() {
+        let model = makeModel()
+        model.settings.clipboardEnabled = true
+
+        #expect(model.sections == [.nowPlaying, .shelf, .clipboard, .sound, .translation])
+        #expect(model.dockSections == model.sections)
+
+        model.settings.setPinned(.shelf, false)
+        model.settings.moveSection(.translation, to: .nowPlaying)
+
+        #expect(model.sections == [.translation, .nowPlaying, .shelf, .clipboard, .sound])
+        #expect(model.dockSections == [.translation, .nowPlaying, .clipboard, .sound])
+    }
+
+    @Test func sectionsThatAreOffAreLeftOut() {
+        let model = makeModel()
+        model.settings.shelfEnabled = false
+        model.tab = .shelf
+
+        #expect(model.sections == [.nowPlaying, .sound, .translation])
+        #expect(model.currentSection == .nowPlaying)
+    }
+
+    @Test func menuOfAllSectionsTakesThePlaceOfTheCurrentOne() {
+        let model = makeModel()
+        model.state = .open
+        model.settings.clipboardEnabled = true
+        model.tab = .clipboard
+        model.showsSectionMenu = true
+
+        model.select(.sound)
+
+        #expect(!model.showsSectionMenu)
+        #expect(model.tab == .sound)
+    }
+
+    @Test func typingNeedsTheKeyboardOnTheTranslator() {
+        let model = makeModel()
+        model.state = .open
+        model.tab = .translation
+        #expect(!model.isTypingTranslation)
+
+        model.isHeldOpen = true
+        #expect(model.isTypingTranslation)
+
+        model.tab = .clipboard
+        #expect(!model.isTypingTranslation)
     }
 }

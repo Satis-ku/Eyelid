@@ -5,20 +5,26 @@ struct NowPlayingCard: View {
     let track: NowPlayingTrack
     let nowPlaying: NowPlayingService
 
-    var body: some View {
-        HStack(spacing: 14) {
-            ArtworkView(artwork: track.artwork, appIcon: track.appIcon, size: 72, cornerRadius: 12)
+    /// The artwork's side, and the height of the title, progress and controls beside it.
+    private static let artworkSize: CGFloat = 120
 
-            VStack(alignment: .leading, spacing: 6) {
-                VStack(alignment: .leading, spacing: 1) {
+    var body: some View {
+        HStack(spacing: 16) {
+            ArtworkView(artwork: track.artwork, appIcon: track.appIcon, size: Self.artworkSize, cornerRadius: 16)
+
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(track.title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
+                        .lineLimit(2)
                     Text(track.subtitle)
-                        .font(.system(size: 12))
+                        .font(.system(size: 13))
                         .foregroundStyle(.white.opacity(0.6))
+                        .lineLimit(1)
                 }
-                .lineLimit(1)
+
+                Spacer(minLength: 8)
 
                 PlaybackProgressView(track: track)
 
@@ -26,8 +32,11 @@ struct NowPlayingCard: View {
                     nowPlaying.send(command)
                 }
                 .frame(maxWidth: .infinity)
+                .padding(.top, 8)
             }
+            .frame(height: Self.artworkSize)
         }
+        .frame(maxHeight: .infinity)
     }
 }
 
@@ -63,7 +72,8 @@ struct ClosedActivityView: View {
                     .contentShape(Rectangle())
                     .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isEqualizerHovered)
             }
-            .buttonStyle(PressableButtonStyle())
+            // It grows on its own, as the window controller sees the pointer over it.
+            .buttonStyle(PressableButtonStyle(hoverScale: 1))
             .accessibilityLabel("Sound")
         }
         .frame(height: notchSize.height)
@@ -184,11 +194,27 @@ private struct ControlButton: View {
     }
 }
 
+/// The notch's buttons: they grow a little under the pointer, with a spring, and shrink when pressed.
 struct PressableButtonStyle: ButtonStyle {
+    /// How much the button grows under the pointer. Rows across the notch don't, and light up instead.
+    var hoverScale: CGFloat = 1.1
+
     func makeBody(configuration: Configuration) -> some View {
+        PressableButton(configuration: configuration, hoverScale: hoverScale)
+    }
+}
+
+private struct PressableButton: View {
+    let configuration: ButtonStyleConfiguration
+    let hoverScale: CGFloat
+    @State private var isHovered = false
+
+    var body: some View {
         configuration.label
             .opacity(configuration.isPressed ? 0.6 : 1)
-            .scaleEffect(configuration.isPressed ? 0.88 : 1)
+            .scaleEffect(configuration.isPressed ? 0.88 : (isHovered ? hoverScale : 1))
+            .onHover { isHovered = $0 }
+            .animation(.spring(response: 0.28, dampingFraction: 0.6), value: isHovered)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }

@@ -10,27 +10,28 @@ final class NotchViewModel {
     }
 
     /// What the open notch shows below the strip beside the hardware notch.
-    enum Tab {
-        case nowPlaying
-        case shelf
-        case clipboard
-        case sound
-    }
+    typealias Tab = NotchSection
 
     enum Layout {
         static let openWidth: CGFloat = 470
         /// Room between the open notch's content and its sides.
         static let openHorizontalPadding: CGFloat = 18
-        /// Height of the open notch below the hardware notch strip.
-        static let openContentHeight: CGFloat = 108
-        /// The clipboard history needs room for a list, so the notch grows taller for it.
-        static let clipboardContentHeight: CGFloat = 236
-        /// The Sound tab grows with the outputs, up to this many, which fit the tallest the notch gets.
-        static let soundMaxRows = 6
-        static let soundContentHeight: CGFloat = soundFixedHeight + CGFloat(soundMaxRows) * soundRowHeight
-        /// The Sound tab's volume row and Sound Settings link, and the height of each output.
+        /// Room below the open notch's content.
+        static let openBottomPadding: CGFloat = 14
+        /// The dock of pinned sections along the bottom of the open notch.
+        static let dockHeight: CGFloat = 34
+        /// Tiles in the menu of all sections: this many a row, this tall, this far apart.
+        static let sectionMenuColumns = 4
+        static let sectionTileHeight: CGFloat = 56
+        static let sectionTileSpacing: CGFloat = 6
+        /// Height of the open notch's section, between the strip beside the camera and the dock. The same for every
+        /// section, so switching between them in the dock doesn't pull the notch out from under the pointer.
+        static let openContentHeight: CGFloat = 200
+        /// The Sound section's volume row and Sound Settings link, and the height of each output.
         static let soundFixedHeight: CGFloat = 70
         static let soundRowHeight: CGFloat = 26
+        /// As many outputs as fit the section.
+        static let soundMaxRows = Int((openContentHeight - soundFixedHeight) / soundRowHeight)
         /// Extra room on each side of the closed notch for the live activity.
         static let activitySideWidth: CGFloat = 42
         /// Room on each side of the closed notch for the volume and brightness HUD.
@@ -41,6 +42,11 @@ final class NotchViewModel {
         static let batteryEventDuration: TimeInterval = 3
         /// How long a new sound output stays next to the closed notch, in seconds.
         static let outputEventDuration: TimeInterval = 3
+        /// How long a translation nobody looks at stays open: time to read both texts, at about 15 characters a second
+        /// for the original, within limits.
+        static func translationReadingTime(for text: String) -> Duration {
+            .seconds(min(max(4 + Double(text.count) / 15, 6), 30))
+        }
         /// How far the lower lid hangs below the hardware notch, in the middle, to show the track title.
         static let trackTitleHeight: CGFloat = 30
         /// How far above the bottom of the lid the title runs.
@@ -74,9 +80,14 @@ final class NotchViewModel {
     var isDraggingFiles = false
     /// Whether files are being dragged over the open notch, which would add them to the shelf.
     var isDropTargeted = false
-    /// Whether the notch stays open wherever the pointer goes: after the clipboard shortcut, until an entry is
-    /// picked, Escape is pressed or the user clicks elsewhere.
+    /// Whether the open notch shows the menu of all sections, in place of the current one.
+    var showsSectionMenu = false
+    /// Whether the notch has the keyboard and stays open wherever the pointer goes: for the clipboard history after
+    /// its shortcut, or for typing a translation, until Escape, a click elsewhere, or an entry is picked.
     var isHeldOpen = false
+    /// Whether the notch stays open after showing a translation, until the pointer has been over it and left, a
+    /// click elsewhere, or it has had time to be read.
+    var isTranslationHeld = false
     /// The clipboard entry that Return copies, by its place in the list.
     var clipboardSelection = 0
     /// What's been typed to search the clipboard history.
@@ -91,6 +102,7 @@ final class NotchViewModel {
     let battery: BatteryService
     let shelf: Shelf
     let clipboard: ClipboardHistory
+    let translator: Translator
     let settings: AppSettings
     @ObservationIgnored let shelfDragSource = ShelfDragSource()
     /// The volume and outputs, for the Sound tab.
@@ -99,6 +111,8 @@ final class NotchViewModel {
     var isHoveringEqualizer = false
     /// Opens the notch on the Sound tab. Set by the window controller, which owns opening.
     @ObservationIgnored var openSound: @MainActor () -> Void = {}
+    /// Gives the translation's text field the keyboard, after a click on it. Set by the window controller.
+    @ObservationIgnored var typeTranslation: @MainActor () -> Void = {}
     /// Set by the window controller, which owns opening and closing.
     @ObservationIgnored var close: @MainActor () -> Void = {}
     /// Presses ⌘V in the app in front. Set by the window controller, which knows when it has the keyboard back.
@@ -111,6 +125,7 @@ final class NotchViewModel {
         battery: BatteryService,
         shelf: Shelf,
         clipboard: ClipboardHistory,
+        translator: Translator,
         settings: AppSettings
     ) {
         self.geometry = geometry
@@ -119,6 +134,7 @@ final class NotchViewModel {
         self.battery = battery
         self.shelf = shelf
         self.clipboard = clipboard
+        self.translator = translator
         self.settings = settings
         shelfDragSource.onDrop = { [weak self] items in
             self?.didDragOut(items)
@@ -138,11 +154,50 @@ final class NotchViewModel {
         tab == .sound
     }
 
-    /// As tall as the outputs need, within limits.
-    var soundContentHeight: CGFloat {
-        let rows = CGFloat(max(sound.devices.count, 1))
-        let needed = Layout.soundFixedHeight + rows * Layout.soundRowHeight
-        return min(max(needed, Layout.openContentHeight), Layout.soundContentHeight)
+    var showsTranslation: Bool {
+        tab == .translation && translator.isAvailable
+    }
+
+    /// The sections there are, in the user's order: the shelf and the clipboard history only while they're on, and
+    /// the translator on Macs that can translate.
+    var sections: [NotchSection] {
+        settings.sectionOrder.filter { section in
+            switch section {
+            case .shelf: settings.shelfEnabled
+            case .clipboard: settings.clipboardEnabled
+            case .translation: translator.isAvailable
+            case .nowPlaying, .sound: true
+            }
+        }
+    }
+
+    /// The pinned sections, in the dock at the bottom of the open notch.
+    var dockSections: [NotchSection] {
+        Array(sections.filter(settings.pinnedSections.contains).prefix(NotchSection.maxPinned))
+    }
+
+    /// The section the open notch shows: the chosen one, or Now Playing when that one is off.
+    var currentSection: NotchSection {
+        sections.contains(tab) ? tab : .nowPlaying
+    }
+
+    /// Shows a section, and puts the menu of all sections away.
+    func select(_ section: NotchSection) {
+        if section == .clipboard {
+            resetClipboard()
+        }
+        tab = section
+        showsSectionMenu = false
+    }
+
+    /// The section's icon, with a full tray for a shelf with files on it.
+    func systemImage(for section: NotchSection) -> String {
+        section == .shelf && !shelf.items.isEmpty ? "tray.full" : section.systemImage
+    }
+
+    /// Whether the translation's text field has the keyboard, which holds the notch open.
+    var isTypingTranslation: Bool {
+        state == .open && isHeldOpen && tab == .translation
     }
 
     /// The clipboard entries that match what's been typed.
@@ -264,10 +319,7 @@ final class NotchViewModel {
         let notch = geometry.notchSize
         switch state {
         case .open:
-            let contentHeight = showsClipboard
-                ? Layout.clipboardContentHeight
-                : (showsSound ? soundContentHeight : Layout.openContentHeight)
-            return CGSize(width: Layout.openWidth, height: notch.height + contentHeight)
+            return CGSize(width: Layout.openWidth, height: notch.height + Layout.openContentHeight + Layout.dockHeight)
         case .closed:
             let sideWidth = hud != nil || output != nil
                 ? Layout.hudSideWidth
@@ -294,7 +346,8 @@ final class NotchViewModel {
         CGSize(
             width: Layout.openWidth + 2 * Layout.openTopRadius + 2 * Layout.shadowPadding,
             height: geometry.notchSize.height
-                + max(Layout.openContentHeight, Layout.clipboardContentHeight)
+                + Layout.openContentHeight
+                + Layout.dockHeight
                 + Layout.shadowPadding
         )
     }
