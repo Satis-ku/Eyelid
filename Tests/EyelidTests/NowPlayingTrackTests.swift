@@ -133,10 +133,19 @@ struct SeekingTests {
         #expect(position(after: 10.5, of: track(), sought: sought) == 120.5)
         #expect(position(after: 10.5, of: track(isPlaying: false), sought: sought) == 120)
 
-        // The player reports where it is now.
+        // The player reports where it is now, and the bar follows it again.
         var reported = track(reportedAt: reportedAt.addingTimeInterval(10.4))
         reported.elapsedTime = 120
         #expect(abs(position(after: 10.5, of: reported, sought: sought) - 120.1) < 0.001)
+    }
+
+    /// While seeking, players send a fresh update or two still at the old position: the bar doesn't go back to it.
+    @Test func anUpdateFromBeforeTheSeekDoesntPullTheBarBack() {
+        let sought = PlaybackProgressView.Seek(position: 120, at: reportedAt.addingTimeInterval(10))
+        var stale = track(reportedAt: reportedAt.addingTimeInterval(10.2))
+        stale.elapsedTime = 40
+
+        #expect(position(after: 10.5, of: stale, sought: sought) == 120.5)
     }
 
     /// A player that can't seek reports nothing new: the bar goes back to where it really is.

@@ -135,9 +135,11 @@ struct PlaybackProgressView: View {
         let at: Date
     }
 
-    /// How long a seek shows before the bar goes back to what the player reports: one that can't seek reports
-    /// nothing new, and the bar shouldn't stay where it never went.
-    static let seekGrace: TimeInterval = 2
+    /// How long a seek shows before the bar goes back to what the player reports: one that can't seek never gets
+    /// there, and the bar shouldn't stay where it never went.
+    static let seekGrace: TimeInterval = 3
+    /// How close the player's position must come to the seek for the bar to follow the player again.
+    static let seekTolerance: TimeInterval = 1.5
     /// How far VoiceOver's adjustments move.
     private static let step: TimeInterval = 10
 
@@ -208,17 +210,20 @@ struct PlaybackProgressView: View {
         seek(position)
     }
 
-    /// Where the bar is: where it's dragged to, or where a seek went until the player reports that, for a moment at
+    /// Where the bar is: where it's dragged to, or where a seek went until the player gets there, for a moment at
     /// most, or else where the player says it is.
+    ///
+    /// The player's position counts once it's near the seek, not merely once it's newer: while seeking, players
+    /// report a fresh update or two with the old position, which pulled the bar back for a moment.
     static func position(at date: Date, of track: NowPlayingTrack, dragged: TimeInterval?, sought: Seek?) -> TimeInterval {
         if let dragged {
             return dragged
         }
-        if let sought, date.timeIntervalSince(sought.at) < seekGrace, (track.timestamp ?? .distantPast) < sought.at {
-            let played = track.isPlaying ? date.timeIntervalSince(sought.at) * track.playbackRate : 0
-            return min(sought.position + max(played, 0), track.duration ?? .infinity)
-        }
-        return track.elapsedTime(at: date) ?? 0
+        let reported = track.elapsedTime(at: date) ?? 0
+        guard let sought, date.timeIntervalSince(sought.at) < seekGrace else { return reported }
+        let played = track.isPlaying ? max(date.timeIntervalSince(sought.at) * track.playbackRate, 0) : 0
+        let expected = min(sought.position + played, track.duration ?? .infinity)
+        return abs(reported - expected) < seekTolerance ? reported : expected
     }
 
     static func format(_ interval: TimeInterval) -> String {
