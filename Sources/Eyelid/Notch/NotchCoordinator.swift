@@ -11,6 +11,7 @@ final class NotchCoordinator {
     private let shelf: Shelf
     private let clipboard: ClipboardHistory
     private let translator: Translator
+    private let appVolumes: AppVolumes
     private let settings: AppSettings
     private var controllers: [NotchWindowController] = []
     private var pointerMonitors: [Any] = []
@@ -27,6 +28,7 @@ final class NotchCoordinator {
         clipboardShortcut: Shortcut,
         lidShortcut: Shortcut,
         translator: Translator,
+        appVolumes: AppVolumes,
         doubleCopy: DoubleCopyWatcher,
         translationShortcut: Shortcut,
         hud: HUDService,
@@ -38,6 +40,7 @@ final class NotchCoordinator {
         self.shelf = shelf
         self.clipboard = clipboard
         self.translator = translator
+        self.appVolumes = appVolumes
         self.settings = settings
 
         pointerDisplay = NSScreen.withPointer?.displayID
@@ -180,6 +183,7 @@ final class NotchCoordinator {
                     shelf: shelf,
                     clipboard: clipboard,
                     translator: translator,
+                    appVolumes: appVolumes,
                     settings: settings
                 ))
             }

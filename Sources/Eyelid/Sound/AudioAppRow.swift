@@ -1,47 +1,68 @@
 import SwiftUI
 
-/// An app playing, in the Sound section: its icon and name. A click brings it forward.
+/// An app playing, in the Sound section: its icon, which brings it forward, its name, and its own volume.
 struct AudioAppRow: View {
     let app: AudioApp
+    let appVolumes: AppVolumes
     @State private var isHovered = false
 
     var body: some View {
-        Button {
-            guard let url = app.bundleURL else { return }
-            // Opening a running app brings it forward, which activating it from an app in the background may not.
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
-        } label: {
-            HStack(spacing: 8) {
-                Group {
-                    if let icon = app.icon {
-                        Image(nsImage: icon)
-                            .resizable()
-                            .interpolation(.high)
-                    } else {
-                        Image(systemName: "app.dashed")
-                            .foregroundStyle(.white.opacity(0.6))
+        HStack(spacing: 6) {
+            Button {
+                guard let url = app.bundleURL else { return }
+                // Opening a running app brings it forward, which activating it from an app in the background may not.
+                NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+            } label: {
+                HStack(spacing: 6) {
+                    icon
+                        .frame(width: 18, height: 18)
+                    Text(app.name)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                .frame(width: 92, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PressableButtonStyle(hoverScale: 1.04))
+            .help("Show \(app.name)")
+            .accessibilityHint("Brings the app forward")
+
+            if AppVolumes.isSupported {
+                VolumeSlider(
+                    level: Binding(
+                        get: { appVolumes.volume(for: app) },
+                        set: { appVolumes.setVolume($0, for: app) }
+                    ),
+                    accessibilityLabel: "Volume of \(app.name)"
+                ) { isEditing in
+                    // Settles whether the app still needs a tap of its own once the slider is let go.
+                    if !isEditing {
+                        appVolumes.sync()
                     }
                 }
-                .frame(width: 18, height: 18)
-                Text(app.name)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 8)
-            .frame(height: 24)
-            .background(
-                .white.opacity(isHovered ? 0.06 : 0),
-                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-            )
-            .contentShape(Rectangle())
         }
-        .buttonStyle(PressableButtonStyle(hoverScale: 1))
+        .padding(.horizontal, 8)
+        .frame(height: 24)
+        .background(
+            .white.opacity(isHovered ? 0.06 : 0),
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+        )
         .onHover { isHovered = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovered)
-        .accessibilityLabel(app.name)
-        .accessibilityHint("Brings the app forward")
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        if let icon = app.icon {
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+        } else {
+            Image(systemName: "app.dashed")
+                .foregroundStyle(.white.opacity(0.6))
+        }
     }
 }

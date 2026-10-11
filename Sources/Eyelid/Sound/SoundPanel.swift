@@ -4,6 +4,7 @@ import SwiftUI
 /// Center, and the apps playing.
 struct SoundPanel: View {
     let sound: SoundControl
+    let appVolumes: AppVolumes
     let settings: AppSettings
 
     /// The slider's value while it's dragged, so reading the volume back doesn't fight it.
@@ -35,7 +36,7 @@ struct SoundPanel: View {
                             .padding(.horizontal, 8)
                     }
                     ForEach(sound.apps.prefix(NotchViewModel.Layout.soundMaxRows)) { app in
-                        AudioAppRow(app: app)
+                        AudioAppRow(app: app, appVolumes: appVolumes)
                     }
                 }
             }

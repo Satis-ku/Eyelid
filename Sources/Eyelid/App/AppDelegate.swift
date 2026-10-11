@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let clipboard = ClipboardHistory(pinnedFile: ClipboardHistory.defaultPinnedFile)
     private(set) lazy var translator = Translator(settings: settings)
     private let doubleCopy = DoubleCopyWatcher()
+    private let appVolumes = AppVolumes()
     private let hotKeys = HotKeyCenter()
     private(set) lazy var clipboardShortcut = Shortcut(
         center: hotKeys,
@@ -41,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         audioLevels.start()
         battery.start()
         output.start()
+        appVolumes.start()
         shelf.deleteUnusedPromisedFiles()
         notches = NotchCoordinator(
             nowPlaying: nowPlaying,
@@ -52,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             clipboardShortcut: clipboardShortcut,
             lidShortcut: lidShortcut,
             translator: translator,
+            appVolumes: appVolumes,
             doubleCopy: doubleCopy,
             translationShortcut: translationShortcut,
             hud: hud,
@@ -60,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         followHUDSetting()
         followClipboardSetting()
         followTranslationSetting()
+        followEqualizerSetting()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -91,6 +95,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.followClipboardSetting()
+            }
+        }
+    }
+
+    /// While the equalizer follows the sound, macOS shows the recording indicator anyway, so every app playing goes
+    /// through Eyelid, and changing an app's volume never switches its sound between paths.
+    private func followEqualizerSetting() {
+        withObservationTracking {
+            appVolumes.routesPlayingApps = settings.equalizerFollowsAudio && AudioLevels.isSupported
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.followEqualizerSetting()
             }
         }
     }
