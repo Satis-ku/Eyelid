@@ -133,7 +133,7 @@ private struct OpenNotchView: View {
                 } else if model.showsClipboard {
                     ClipboardView(model: model)
                 } else if model.showsSound {
-                    SoundPanel(sound: model.sound, settings: model.settings)
+                    SoundPanel(sound: model.sound, appVolumes: model.appVolumes, settings: model.settings)
                 } else if model.showsTranslation {
                     TranslationPanel(
                         translator: model.translator,

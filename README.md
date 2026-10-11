@@ -55,6 +55,12 @@ Eyelid lives in the notch and blends in with it. Hover over the notch and it ope
 
 <img src="docs/images/hud-styles.png" alt="The five level styles for AirPods, the MacBook speakers and brightness" width="560">
 
+### Sound
+
+- **Like Control Center's Sound menu,** in the open notch: the volume, and the outputs to switch between, with the charge of AirPods and Beats.
+- **The apps playing,** each with its icon, beside the outputs. A click on one brings it forward.
+- **A volume for each app** (macOS 14.2 or later), as SoundSource does: turn Yandex Music down under a call, or a game under the music. Eyelid remembers each app's volume. An app below full volume plays through Eyelid, so macOS shows the recording indicator while it does; at full volume it plays as it does without Eyelid.
+
 ### Battery
 
 - **Charging and unplugging.** Plugging in or unplugging the charger shows the charge beside the notch for a few seconds, green while charging.
@@ -163,6 +169,7 @@ Releases are signed ad hoc, so macOS ties the permission to one exact build. Aft
 - **The shelf doesn't read your files.** It keeps bookmarks to them in user defaults. Previews come from Quick Look, which runs in its own sandboxed process.
 - **The clipboard history is opt-in and stays in memory.** It's gone when Eyelid quits, except for copies you pin, which are saved in Eyelid's Application Support folder. Copies that password managers mark as concealed or transient aren't kept. Since macOS 15.4, macOS also asks before an app reads what other apps copy: allow Eyelid under **Privacy & Security → Paste from Other Apps**, then reopen it.
 - **Translation stays on your Mac.** Apple's Translation translates what you type offline. With ⌘C twice on, Eyelid reads what you copy only after a double copy. Nothing is kept but the latest translation, in memory.
+- **App volumes only for the apps you turn down.** An app with a volume of its own plays through a Core Audio tap: Eyelid takes its sound, scales it and plays it to the output, in memory, keeping nothing. macOS shows the recording indicator meanwhile. Turned back up to full, the app plays as before, and if Eyelid quits, macOS plays it as before at once.
 - **The equalizer listens only if you ask it to.** With **Equalizer follows the sound** on, and only while something plays, Eyelid taps the system audio through Core Audio to measure how loud the bass, mids and treble are. Each buffer is measured in memory and dropped: nothing is recorded, kept or sent. macOS asks for permission under **Privacy & Security → Screen & System Audio Recording**, and shows the recording indicator while Eyelid listens.
 - **Settings** are stored in macOS user defaults.
 

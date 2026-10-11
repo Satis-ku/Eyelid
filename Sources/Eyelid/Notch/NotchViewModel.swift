@@ -104,6 +104,8 @@ final class NotchViewModel {
     let shelf: Shelf
     let clipboard: ClipboardHistory
     let translator: Translator
+    /// Each app's own volume, for the Sound section.
+    let appVolumes: AppVolumes
     let settings: AppSettings
     @ObservationIgnored let shelfDragSource = ShelfDragSource()
     /// The volume and outputs, for the Sound tab.
@@ -127,6 +129,7 @@ final class NotchViewModel {
         shelf: Shelf,
         clipboard: ClipboardHistory,
         translator: Translator,
+        appVolumes: AppVolumes,
         settings: AppSettings
     ) {
         self.geometry = geometry
@@ -136,6 +139,7 @@ final class NotchViewModel {
         self.shelf = shelf
         self.clipboard = clipboard
         self.translator = translator
+        self.appVolumes = appVolumes
         self.settings = settings
         shelfDragSource.onDrop = { [weak self] items in
             self?.didDragOut(items)

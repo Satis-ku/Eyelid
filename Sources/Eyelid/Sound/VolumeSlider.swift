@@ -3,6 +3,7 @@ import SwiftUI
 /// A white capsule filled to the volume, like the HUD's level bar, that follows a drag or a click anywhere on it.
 struct VolumeSlider: View {
     @Binding var level: Float
+    var accessibilityLabel = "Volume"
     /// Called as a drag starts and ends, so reading the volume back doesn't fight it.
     let onEditingChanged: @MainActor (Bool) -> Void
 
@@ -38,7 +39,7 @@ struct VolumeSlider: View {
         }
         .frame(height: 18)
         .accessibilityElement()
-        .accessibilityLabel("Volume")
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityValue("\(Int((level * 100).rounded())) percent")
         .accessibilityAdjustableAction { direction in
             onEditingChanged(true)

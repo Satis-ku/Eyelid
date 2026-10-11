@@ -33,6 +33,7 @@ final class NotchWindowController {
         shelf: Shelf,
         clipboard: ClipboardHistory,
         translator: Translator,
+        appVolumes: AppVolumes,
         settings: AppSettings
     ) {
         self.settings = settings
@@ -44,6 +45,7 @@ final class NotchWindowController {
             shelf: shelf,
             clipboard: clipboard,
             translator: translator,
+            appVolumes: appVolumes,
             settings: settings
         )
 

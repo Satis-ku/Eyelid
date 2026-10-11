@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let clipboard = ClipboardHistory(pinnedFile: ClipboardHistory.defaultPinnedFile)
     private(set) lazy var translator = Translator(settings: settings)
     private let doubleCopy = DoubleCopyWatcher()
+    private let appVolumes = AppVolumes()
     private let hotKeys = HotKeyCenter()
     private(set) lazy var clipboardShortcut = Shortcut(
         center: hotKeys,
@@ -41,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         audioLevels.start()
         battery.start()
         output.start()
+        appVolumes.start()
         shelf.deleteUnusedPromisedFiles()
         notches = NotchCoordinator(
             nowPlaying: nowPlaying,
@@ -52,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             clipboardShortcut: clipboardShortcut,
             lidShortcut: lidShortcut,
             translator: translator,
+            appVolumes: appVolumes,
             doubleCopy: doubleCopy,
             translationShortcut: translationShortcut,
             hud: hud,
