@@ -100,10 +100,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// While the equalizer follows the sound, macOS shows the recording indicator anyway, so every app playing goes
-    /// through Eyelid, and changing an app's volume never switches its sound between paths.
+    /// through Eyelid, and changing an app's volume never switches its sound between paths. Not while the equalizer
+    /// can't be seen, such as with the live activity hidden: then Eyelid listens to nothing it doesn't have to.
     private func followEqualizerSetting() {
         withObservationTracking {
             appVolumes.routesPlayingApps = settings.equalizerFollowsAudio && AudioLevels.isSupported
+                && audioLevels.isEqualizerVisible
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.followEqualizerSetting()

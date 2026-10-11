@@ -51,9 +51,16 @@ final class AppVolumes {
     /// app goes quiet, so a pause doesn't switch, and then goes, so the output can sleep.
     @ObservationIgnored var routesPlayingApps = false {
         didSet {
-            if routesPlayingApps != oldValue {
-                sync()
+            guard routesPlayingApps != oldValue else { return }
+            if !routesPlayingApps {
+                // Turned off, such as by hiding the live activity, to stop listening: the taps go now, not once
+                // their apps are quiet, but for apps with settings of their own.
+                for (key, tap) in taps where !hasOwnSettings(key) {
+                    tap.stop()
+                    taps[key] = nil
+                }
             }
+            sync()
         }
     }
 

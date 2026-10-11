@@ -1,3 +1,4 @@
+import AppKit
 import CoreAudio
 import Observation
 import os
@@ -19,6 +20,9 @@ final class AudioLevels {
     @ObservationIgnored private var outputListener: AudioObjectPropertyListenerBlock?
     /// Since when the tap has heard only silence.
     @ObservationIgnored private var silentSince: ContinuousClock.Instant?
+    /// Whether the displays are asleep, when nobody sees the equalizer.
+    private(set) var isDisplayAsleep = false
+    @ObservationIgnored private var sleepObservers: [NSObjectProtocol] = []
 
     /// How often the bars move, a second.
     static let frameRate = 30.0
@@ -38,6 +42,17 @@ final class AudioLevels {
     }
 
     func start() {
+        let center = NSWorkspace.shared.notificationCenter
+        for (name, isAsleep) in [
+            (NSWorkspace.screensDidSleepNotification, true),
+            (NSWorkspace.screensDidWakeNotification, false),
+        ] {
+            sleepObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.isDisplayAsleep = isAsleep
+                }
+            })
+        }
         follow()
         let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             MainActor.assumeIsolated {
@@ -50,8 +65,14 @@ final class AudioLevels {
         }
     }
 
+    /// Whether the equalizer could be seen: the live activity is on and not hidden, and the displays are awake. When
+    /// it can't, Eyelid doesn't listen to the system's sound for it, and macOS shows no recording indicator for it.
+    var isEqualizerVisible: Bool {
+        settings.showsLiveActivity && !settings.isLiveActivityHidden && !isDisplayAsleep
+    }
+
     private var shouldListen: Bool {
-        settings.equalizerFollowsAudio && nowPlaying.track?.isPlaying == true
+        settings.equalizerFollowsAudio && isEqualizerVisible && nowPlaying.track?.isPlaying == true
     }
 
     /// Listens while the setting is on and something plays, and not otherwise.
@@ -87,6 +108,9 @@ final class AudioLevels {
     }
 
     private func stopListening() {
+        if tap != nil {
+            logger.debug("Stopped listening for the equalizer")
+        }
         pollTask?.cancel()
         pollTask = nil
         if #available(macOS 14.2, *) {
