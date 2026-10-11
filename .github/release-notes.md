@@ -14,6 +14,6 @@ Eyelid isn't notarized yet, so macOS blocks the first launch. Open **System Sett
 xattr -dr com.apple.quarantine /Applications/Eyelid.app
 ```
 
-If you use the volume and brightness HUD, remove Eyelid from **System Settings → Privacy & Security → Accessibility** after updating, and allow it again.
+If you use the volume and brightness HUD, remove Eyelid from **System Settings → Privacy & Security → Accessibility** after updating, and allow it again. Eyelid is signed ad hoc, so macOS sees each version as a new app: it may also ask again to let Eyelid record system audio (for the equalizer and apps' own volumes) and paste from other apps (for the clipboard history and translating what you copy).
 
 Requires macOS 14 or later, on Apple silicon or Intel. The `.sha256` file holds the zip's SHA-256 checksum.
