@@ -9,6 +9,7 @@ struct TranslationPanel: View {
     let isTyping: Bool
     let beginTyping: @MainActor () -> Void
     @State private var didCopy = false
+    @State private var isFieldHovered = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: TranslationLayout.spacing) {
@@ -63,9 +64,19 @@ struct TranslationPanel: View {
         .padding(.horizontal, TranslationLayout.inputPadding.width)
         .padding(.vertical, TranslationLayout.inputPadding.height)
         .background(
-            .white.opacity(isTyping ? 0.12 : 0.07),
+            .white.opacity(isTyping ? 0.12 : (isFieldHovered ? 0.1 : 0.07)),
             in: RoundedRectangle(cornerRadius: 8, style: .continuous)
         )
+        .onHover { isHovered in
+            isFieldHovered = isHovered
+            // A text cursor, as over any field, though the click lands on the overlay.
+            if isHovered {
+                NSCursor.iBeam.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: isFieldHovered)
         .overlay {
             if !isTyping {
                 // A click asks for the keyboard, which the panel only takes on cue.

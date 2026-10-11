@@ -73,7 +73,7 @@ struct SettingsView: View {
         } icon: {
             SettingsPageIcon(page: page)
         }
-        .tag(Optional(page))
+        .tag(page)
     }
 
     @ViewBuilder

@@ -22,7 +22,7 @@ final class NotchViewModel {
         static let dockHeight: CGFloat = 34
         /// Tiles in the menu of all sections: this many a row, this tall, this far apart.
         static let sectionMenuColumns = 4
-        static let sectionTileHeight: CGFloat = 44
+        static let sectionTileHeight: CGFloat = 56
         static let sectionTileSpacing: CGFloat = 6
         /// Height of the open notch's section, between the strip beside the camera and the dock. The same for every
         /// section, so switching between them in the dock doesn't pull the notch out from under the pointer.

@@ -6,6 +6,7 @@ struct SectionTitle: View {
     let systemImage: String
     let isMenuShown: Bool
     let action: @MainActor () -> Void
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
@@ -23,10 +24,12 @@ struct SectionTitle: View {
             .foregroundStyle(.white.opacity(0.9))
             .padding(.horizontal, 8)
             .frame(height: 22)
-            .background(.white.opacity(isMenuShown ? 0.14 : 0), in: Capsule())
+            .background(.white.opacity(isMenuShown ? 0.14 : (isHovered ? 0.08 : 0)), in: Capsule())
             .contentShape(Capsule())
         }
-        .buttonStyle(PressableButtonStyle())
+        .buttonStyle(PressableButtonStyle(hoverScale: 1.04))
+        .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.15), value: isHovered)
         .accessibilityLabel(section.title)
         .accessibilityHint(isMenuShown ? "Hides all sections" : "Shows all sections")
         .animation(.easeOut(duration: 0.15), value: isMenuShown)
@@ -69,17 +72,20 @@ private struct DockButton: View {
     let systemImage: String
     let isSelected: Bool
     let action: @MainActor () -> Void
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white.opacity(isSelected ? 1 : 0.45))
+                .foregroundStyle(.white.opacity(isSelected ? 1 : (isHovered ? 0.85 : 0.45)))
                 .frame(width: 40, height: 24)
-                .background(.white.opacity(isSelected ? 0.14 : 0), in: Capsule())
+                .background(.white.opacity(isSelected ? 0.14 : (isHovered ? 0.07 : 0)), in: Capsule())
                 .contentShape(Capsule())
         }
-        .buttonStyle(PressableButtonStyle())
+        .buttonStyle(PressableButtonStyle(hoverScale: 1.08))
+        .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.15), value: isHovered)
         .accessibilityLabel(title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .animation(.easeOut(duration: 0.15), value: isSelected)
@@ -100,30 +106,48 @@ struct SectionMenu: View {
             spacing: spacing
         ) {
             ForEach(model.sections, id: \.self) { section in
-                let isCurrent = model.currentSection == section
-                Button {
+                SectionTile(
+                    title: section.title,
+                    systemImage: model.systemImage(for: section),
+                    isCurrent: model.currentSection == section
+                ) {
                     model.select(section)
-                } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: model.systemImage(for: section))
-                            .font(.system(size: 15, weight: .medium))
-                        Text(section.title)
-                            .font(.system(size: 11, weight: .medium))
-                            .lineLimit(1)
-                    }
-                    .foregroundStyle(.white.opacity(isCurrent ? 1 : 0.8))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: NotchViewModel.Layout.sectionTileHeight)
-                    .background(
-                        .white.opacity(isCurrent ? 0.2 : 0.08),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
-                .buttonStyle(PressableButtonStyle())
-                .accessibilityLabel(section.title)
             }
         }
-        .frame(maxHeight: .infinity, alignment: .top)
+        // In the middle of the section, which is as tall as any other.
+        .frame(maxHeight: .infinity)
+    }
+}
+
+private struct SectionTile: View {
+    let title: String
+    let systemImage: String
+    let isCurrent: Bool
+    let action: @MainActor () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 18, weight: .medium))
+                Text(title)
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.white.opacity(isCurrent || isHovered ? 1 : 0.8))
+            .frame(maxWidth: .infinity)
+            .frame(height: NotchViewModel.Layout.sectionTileHeight)
+            .background(
+                .white.opacity(isCurrent ? 0.2 : (isHovered ? 0.14 : 0.08)),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(PressableButtonStyle(hoverScale: 1.04))
+        .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.15), value: isHovered)
+        .accessibilityLabel(title)
     }
 }

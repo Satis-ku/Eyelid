@@ -6,6 +6,7 @@ struct OutputDeviceRow: View {
     let icon: DeviceIcon
     let isSelected: Bool
     let select: @MainActor () -> Void
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: select) {
@@ -31,10 +32,15 @@ struct OutputDeviceRow: View {
             }
             .padding(.horizontal, 8)
             .frame(height: 24)
-            .background(.white.opacity(isSelected ? 0.1 : 0), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .background(
+                .white.opacity(isSelected ? 0.1 : (isHovered ? 0.06 : 0)),
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            )
             .contentShape(Rectangle())
         }
-        .buttonStyle(PressableButtonStyle())
+        .buttonStyle(PressableButtonStyle(hoverScale: 1))
+        .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.12), value: isHovered)
         .accessibilityLabel(device.name)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

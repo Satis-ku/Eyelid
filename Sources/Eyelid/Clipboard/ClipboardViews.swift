@@ -110,6 +110,7 @@ private struct ClipboardSearchBar: View {
 private struct ClipboardRow: View {
     let entry: ClipboardEntry
     let isSelected: Bool
+    @State private var isHovered = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -143,9 +144,14 @@ private struct ClipboardRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(isSelected ? 0.12 : 0), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(
+            .white.opacity(isSelected ? 0.12 : (isHovered ? 0.06 : 0)),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
         .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
         .animation(.easeOut(duration: 0.15), value: isSelected)
+        .animation(.easeOut(duration: 0.12), value: isHovered)
     }
 }
 

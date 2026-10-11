@@ -72,7 +72,8 @@ struct ClosedActivityView: View {
                     .contentShape(Rectangle())
                     .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isEqualizerHovered)
             }
-            .buttonStyle(PressableButtonStyle())
+            // It grows on its own, as the window controller sees the pointer over it.
+            .buttonStyle(PressableButtonStyle(hoverScale: 1))
             .accessibilityLabel("Sound")
         }
         .frame(height: notchSize.height)
@@ -193,11 +194,27 @@ private struct ControlButton: View {
     }
 }
 
+/// The notch's buttons: they grow a little under the pointer, with a spring, and shrink when pressed.
 struct PressableButtonStyle: ButtonStyle {
+    /// How much the button grows under the pointer. Rows across the notch don't, and light up instead.
+    var hoverScale: CGFloat = 1.1
+
     func makeBody(configuration: Configuration) -> some View {
+        PressableButton(configuration: configuration, hoverScale: hoverScale)
+    }
+}
+
+private struct PressableButton: View {
+    let configuration: ButtonStyleConfiguration
+    let hoverScale: CGFloat
+    @State private var isHovered = false
+
+    var body: some View {
         configuration.label
             .opacity(configuration.isPressed ? 0.6 : 1)
-            .scaleEffect(configuration.isPressed ? 0.88 : 1)
+            .scaleEffect(configuration.isPressed ? 0.88 : (isHovered ? hoverScale : 1))
+            .onHover { isHovered = $0 }
+            .animation(.spring(response: 0.28, dampingFraction: 0.6), value: isHovered)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
