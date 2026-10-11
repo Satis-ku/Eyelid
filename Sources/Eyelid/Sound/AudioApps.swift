@@ -37,7 +37,8 @@ enum AudioApps {
     static func withIcons(_ apps: [AudioApp], from known: [AudioApp] = []) -> [AudioApp] {
         apps.map { app in
             var app = app
-            app.icon = known.first { $0.id == app.id }?.icon ?? NSRunningApplication(processIdentifier: app.id)?.icon
+            app.icon = known.first { $0.id == app.id }?.icon
+                ?? app.bundleURL.flatMap { StandardRangeIcons.icon(forFile: $0.path(percentEncoded: false), points: 18) }
             return app
         }
     }

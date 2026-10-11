@@ -34,6 +34,11 @@ struct HUDEvent: Equatable, Sendable {
         }
     }
 
+    /// Whether the icon is the speaker, whose waves follow the level.
+    var hasWaves: Bool {
+        kind == .volume && deviceIcon == .speaker
+    }
+
     /// Device icons have no muted variant, so they dim instead.
     var dimsIcon: Bool {
         kind == .volume && deviceIcon != .speaker && (isMuted || level == 0)

@@ -22,7 +22,6 @@ struct AudioAppRow: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.white.opacity(0.85))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
                 }
                 .frame(width: 92, alignment: .leading)
                 .contentShape(Rectangle())

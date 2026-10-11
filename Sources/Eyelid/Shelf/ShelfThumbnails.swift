@@ -8,7 +8,10 @@ enum ShelfThumbnails {
 
     /// The thumbnail if there is one already, otherwise the file's icon.
     static func image(for url: URL) -> NSImage {
-        cache.object(forKey: url as NSURL) ?? NSWorkspace.shared.icon(forFile: url.path(percentEncoded: false))
+        let path = url.path(percentEncoded: false)
+        return cache.object(forKey: url as NSURL)
+            ?? StandardRangeIcons.icon(forFile: path, points: 48)
+            ?? NSWorkspace.shared.icon(forFile: path)
     }
 
     /// Makes a thumbnail of the file's content, or returns nil if Quick Look has nothing better than the icon.

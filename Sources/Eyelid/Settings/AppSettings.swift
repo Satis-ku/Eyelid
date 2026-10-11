@@ -182,8 +182,8 @@ final class AppSettings {
         didSet { defaults.set(sectionOrder.map(\.rawValue), forKey: Key.sectionOrder) }
     }
 
-    /// The sections in the dock at the bottom of the open notch, `NotchSection.maxPinned` at most. By default, as many
-    /// as fit, in order.
+    /// The sections in the dock at the bottom of the open notch, `NotchSection.maxPinned` at most. By default, the
+    /// first ones in order, up to that.
     var pinnedSections: Set<NotchSection> {
         didSet { defaults.set(sectionOrder.filter(pinnedSections.contains).map(\.rawValue), forKey: Key.pinnedSections) }
     }

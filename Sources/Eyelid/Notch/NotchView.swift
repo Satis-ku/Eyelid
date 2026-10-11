@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NotchView: View {
     let model: NotchViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let animation = Animation.spring(response: 0.42, dampingFraction: 0.82)
 
@@ -37,7 +38,7 @@ struct NotchView: View {
         switch model.state {
         case .open:
             OpenNotchView(model: model)
-                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
         case .closed:
             VStack(spacing: 0) {
                 ZStack {
@@ -138,14 +139,20 @@ private struct OpenNotchView: View {
                     TranslationPanel(
                         translator: model.translator,
                         isTyping: model.isTypingTranslation,
+                        translatesOnDoubleCopy: model.settings.translatesOnDoubleCopy,
                         beginTyping: model.typeTranslation
                     )
                 } else if let track = model.nowPlaying.track {
                     NowPlayingCard(track: track, nowPlaying: model.nowPlaying)
                 } else {
-                    Label("Nothing is playing", systemImage: "music.note")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.5))
+                    // As the shelf and the clipboard say they're empty.
+                    VStack(spacing: 6) {
+                        Image(systemName: "music.note")
+                            .font(.system(size: 20, weight: .medium))
+                        Text("Nothing is playing")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(.white.opacity(0.5))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

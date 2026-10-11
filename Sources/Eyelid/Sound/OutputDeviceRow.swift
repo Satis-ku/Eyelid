@@ -19,9 +19,8 @@ struct OutputDeviceRow: View {
                 Text(device.name)
                     .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
                     .foregroundStyle(.white.opacity(isSelected ? 1 : 0.75))
+                    // Long names end in an ellipsis at the same size as the others, rather than shrink.
                     .lineLimit(1)
-                    // A column is half the notch wide: names like "MacBook Pro Speakers" shrink a little first.
-                    .minimumScaleFactor(0.8)
                 Spacer(minLength: 4)
                 if let level = batteryLevel {
                     Text("\(level)%")
@@ -45,6 +44,7 @@ struct OutputDeviceRow: View {
         .onHover { isHovered = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovered)
         .accessibilityLabel(device.name)
+        .accessibilityValue(batteryLevel.map { "\($0) percent charged" } ?? "")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

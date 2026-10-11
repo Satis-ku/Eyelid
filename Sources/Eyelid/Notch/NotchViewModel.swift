@@ -14,6 +14,8 @@ final class NotchViewModel {
 
     enum Layout {
         static let openWidth: CGFloat = 470
+        /// Room left free on each side of the camera in the open notch, so nothing there touches it.
+        static let cameraClearance: CGFloat = 6
         /// Room between the open notch's content and its sides.
         static let openHorizontalPadding: CGFloat = 18
         /// Room below the open notch's content.
@@ -321,9 +323,10 @@ final class NotchViewModel {
         )
     }
 
-    /// Room right of the camera in the open notch, for the date, time and battery.
+    /// Room on each side of the camera in the open notch: for the section on the left, and the date, time and
+    /// battery on the right.
     var statusWidth: CGFloat {
-        (Layout.openWidth - geometry.notchSize.width) / 2 - Layout.openHorizontalPadding
+        (Layout.openWidth - geometry.notchSize.width) / 2 - Layout.openHorizontalPadding - Layout.cameraClearance
     }
 
     /// Size of the notch body, excluding the ears.

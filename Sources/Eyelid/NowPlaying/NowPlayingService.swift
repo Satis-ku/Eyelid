@@ -255,7 +255,7 @@ final class NowPlayingService {
         }
         let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
         let name = url.map { FileManager.default.displayName(atPath: $0.path).replacing(".app", with: "") }
-        let icon = url.flatMap { Self.standardRangeIcon(forFile: $0.path) }
+        let icon = url.flatMap { StandardRangeIcons.icon(forFile: $0.path(percentEncoded: false), points: 32) }
         player = (bundleIdentifier, name, icon)
         return (name, icon)
     }
@@ -370,29 +370,5 @@ final class NowPlayingService {
         artworkWait?.cancel()
         artworkWait = nil
         isAwaitingArtwork = false
-    }
-
-    /// App icons on recent macOS are 16-bit extended-range images, and a single one of them switches
-    /// SwiftUI to HDR rendering for the whole notch. A plain 8-bit sRGB copy avoids that.
-    private static func standardRangeIcon(forFile path: String) -> NSImage? {
-        let pixels = 64
-        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
-              let context = CGContext(
-                  data: nil,
-                  width: pixels,
-                  height: pixels,
-                  bitsPerComponent: 8,
-                  bytesPerRow: 0,
-                  space: colorSpace,
-                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-              )
-        else { return nil }
-
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
-        NSWorkspace.shared.icon(forFile: path).draw(in: CGRect(x: 0, y: 0, width: pixels, height: pixels))
-        NSGraphicsContext.restoreGraphicsState()
-
-        return context.makeImage().map { NSImage(cgImage: $0, size: NSSize(width: pixels / 2, height: pixels / 2)) }
     }
 }

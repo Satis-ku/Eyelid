@@ -135,7 +135,8 @@ struct NotchViewModelTests {
     @Test func statusFitsRightOfTheCamera() {
         let model = makeModel()
 
-        #expect(model.statusWidth == (NotchViewModel.Layout.openWidth - 185) / 2 - NotchViewModel.Layout.openHorizontalPadding)
+        #expect(model.statusWidth == (NotchViewModel.Layout.openWidth - 185) / 2 - NotchViewModel.Layout.openHorizontalPadding
+            - NotchViewModel.Layout.cameraClearance)
         // Enough for "Oct 11 10:07" and the battery.
         #expect(model.statusWidth >= 115)
     }

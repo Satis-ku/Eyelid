@@ -67,6 +67,9 @@ struct OpenNotchStatus: View {
         }
     }
 
+    /// Without AM or PM, which the menu bar's clock shows, so a 12-hour time leaves room for the date.
+    static let time = Date.FormatStyle.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()
+
     private func status(date: Date.FormatStyle?, at now: Date?) -> some View {
         HStack(spacing: 6) {
             if let now {
@@ -74,7 +77,7 @@ struct OpenNotchStatus: View {
                     Text(now, format: date)
                         .foregroundStyle(.white.opacity(0.55))
                 }
-                Text(now, format: .dateTime.hour().minute())
+                Text(now, format: Self.time)
                     .foregroundStyle(.white.opacity(0.85))
                     .padding(.trailing, 2)
             }
@@ -109,7 +112,8 @@ struct IdleActivityView: View {
             Spacer()
                 .frame(width: notchSize.width)
             TimelineView(.everyMinute) { context in
-                Text(context.date, format: .dateTime.hour().minute())
+                // "10:48 PM" doesn't fit beside the camera.
+                Text(context.date, format: OpenNotchStatus.time)
                     .font(.system(size: 12, weight: .semibold).monospacedDigit())
                     .foregroundStyle(.white.opacity(0.9))
                     .lineLimit(1)
@@ -138,6 +142,10 @@ struct BatteryActivityView: View {
             Text("\(state.level)%")
                 .font(.system(size: 13, weight: .semibold).monospacedDigit())
                 .foregroundStyle(state.tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                // Clear of the camera, so "100%" shrinks a little rather than touch it.
+                .padding(.horizontal, 3)
                 .frame(width: sideWidth)
         }
         .frame(height: notchSize.height)

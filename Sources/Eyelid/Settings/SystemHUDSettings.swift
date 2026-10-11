@@ -36,7 +36,10 @@ struct SystemHUDSettings: View {
                 }
             }
 
-            LabeledContent("Preview") {
+            // An HStack centers the label on the preview, which LabeledContent sets at its first baseline.
+            HStack {
+                Text("Preview")
+                Spacer()
                 HUDPreview(style: settings.hudLevelStyle)
             }
         }

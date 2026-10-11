@@ -188,9 +188,12 @@ final class NotchWindowController {
 
     // MARK: - Track title
 
-    /// Drops the lower lid to run what started playing along it. The open notch shows the track in full already.
+    /// Drops the lower lid to run what started playing along it. The open notch shows the track in full already. Not
+    /// with Reduce Motion on: the live activity still shows that something plays.
     func showTrackTitle() {
-        guard model.state == .closed, !settings.isLiveActivityHidden else { return }
+        guard model.state == .closed, !settings.isLiveActivityHidden,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        else { return }
         let title = TrackTitle()
         model.trackTitle = title
         // The title ends itself once it has run past. This is in case it never shows, behind the HUD for one.

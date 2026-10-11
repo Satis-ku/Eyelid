@@ -55,6 +55,12 @@ struct OutputActivityView: View {
     private var level: some View {
         if let level = event.battery?.level {
             HeadphonesBatteryLevel(level: level)
+        } else {
+            // An output with neither a charge nor a volume to show, such as many displays: a check that sound is
+            // there now, so the other side isn't empty.
+            Image(systemName: "checkmark")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
         }
     }
 

@@ -27,8 +27,8 @@ struct SoundPanel: View {
             volumeRow
             HStack(alignment: .top, spacing: 14) {
                 column("Output") {
-                    // No ScrollView: it doesn't take the first click in a window that isn't key, which the notch
-                    // mostly isn't. Outputs that don't fit are in Sound Settings, from the last row.
+                    // As many rows as fit, without scrolling; the outputs that don't fit are in Sound Settings,
+                    // from the last row.
                     let rows = NotchViewModel.Layout.soundMaxRows
                     let overflows = sound.devices.count > rows
                     ForEach(sound.devices.prefix(overflows ? rows - 1 : rows)) { device in
@@ -51,7 +51,7 @@ struct SoundPanel: View {
                     if sound.apps.isEmpty {
                         Text("No app is playing")
                             .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.4))
+                            .foregroundStyle(.white.opacity(0.5))
                             .frame(height: NotchViewModel.Layout.soundRowHeight - 2)
                             .padding(.horizontal, 8)
                     }
@@ -73,6 +73,11 @@ struct SoundPanel: View {
                 .foregroundStyle(.white.opacity(0.5))
             }
         }
+        // Read before the first frame, which would otherwise show 0% and a muted speaker for a moment.
+        .onAppear {
+            sound.refresh()
+            level = sound.volume.level
+        }
         .task {
             // Outputs come and go, and the volume changes elsewhere, while the section shows.
             while !Task.isCancelled {
@@ -89,7 +94,7 @@ struct SoundPanel: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.white.opacity(0.5))
                 .padding(.horizontal, 8)
                 .frame(height: NotchViewModel.Layout.soundHeaderHeight, alignment: .bottom)
             content()
@@ -106,7 +111,8 @@ struct SoundPanel: View {
             .buttonStyle(PressableButtonStyle())
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(.white)
-            .frame(width: 22)
+            // As in the HUD: the speaker stays put as its waves change.
+            .frame(width: 22, alignment: .leading)
 
             // Set from the slider only, by a drag, a click or VoiceOver; reading the volume back leaves it alone.
             VolumeSlider(level: Binding(get: { level }, set: { new in
@@ -126,10 +132,7 @@ struct SoundPanel: View {
     }
 
     private var muteSymbol: String {
-        if sound.volume.isMuted || level == 0 { return "speaker.slash.fill" }
-        if level < 1 / 3 { return "speaker.wave.1.fill" }
-        if level < 2 / 3 { return "speaker.wave.2.fill" }
-        return "speaker.wave.3.fill"
+        HUDEvent(kind: .volume, level: level, isMuted: sound.volume.isMuted).symbolName
     }
 
     private static let soundSettings = URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!

@@ -27,7 +27,7 @@ struct ClipboardView: View {
                      ? "↑↓ next copy  ·  ↩ copy  ·  space or ⎋ back to the list"
                      : "Type to search  ·  ↩ copy  ·  space preview  ·  ⌘P pin  ·  ⌘⌫ remove")
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.35))
+                    .foregroundStyle(.white.opacity(0.5))
                     .lineLimit(1)
             }
         }
@@ -127,7 +127,7 @@ private struct ClipboardRow: View {
                 if let detail = entry.detail {
                     Text(detail)
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(.white.opacity(0.5))
                 }
             }
 
@@ -174,21 +174,13 @@ private struct ClipboardPreview: View {
                         .padding(10)
                 }
             case .image:
-                if let image = entry.items.first.flatMap({ $0[.png] ?? $0[.tiff] }).flatMap(NSImage.init(data:)) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        .padding(8)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+                ClipboardImagePreview(entry: entry)
             case .files:
                 ScrollView {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(entry.fileURLs, id: \.self) { url in
                             HStack(spacing: 8) {
-                                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path(percentEncoded: false)))
-                                    .resizable()
+                                ClipboardFileIcon(path: url.path(percentEncoded: false), points: 20)
                                     .frame(width: 20, height: 20)
                                 Text(url.path(percentEncoded: false))
                                     .font(.system(size: 11))
@@ -227,11 +219,9 @@ private struct ClipboardIcon: View {
                     .frame(width: 24, height: 24)
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             } else if let file = entry.fileURLs.first {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: file.path(percentEncoded: false)))
-                    .resizable()
+                ClipboardFileIcon(path: file.path(percentEncoded: false), points: 24)
             } else if let app = entry.sourceAppURL {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: app.path(percentEncoded: false)))
-                    .resizable()
+                ClipboardFileIcon(path: app.path(percentEncoded: false), points: 24)
             } else {
                 Image(systemName: "doc.on.clipboard")
                     .font(.system(size: 14))
@@ -256,5 +246,72 @@ private struct ClipboardPlaceholder: View {
         .foregroundStyle(.white.opacity(0.5))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 24)
+    }
+}
+
+/// A file's or an app's icon, in standard range, and looked up once rather than on every redraw.
+private struct ClipboardFileIcon: View {
+    let path: String
+    let points: Int
+
+    var body: some View {
+        if let icon = StandardRangeIcons.icon(forFile: path, points: points) {
+            Image(nsImage: icon)
+                .resizable()
+        } else {
+            Image(systemName: "doc")
+                .foregroundStyle(.white.opacity(0.5))
+        }
+    }
+}
+
+/// A copied image, as large as it fits. It's scaled down once, away from the main thread, and only if its size is
+/// sensible: anything can be on the pasteboard.
+private struct ClipboardImagePreview: View {
+    let entry: ClipboardEntry
+    @State private var image: DecodedImage?
+
+    /// The preview is about 430 pt wide at most, so this covers Retina screens.
+    private static let maxPixelSize = 1_000
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Image(decorative: image.cgImage, scale: 2)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .padding(8)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: entry.id) {
+            let data = entry.items.first.flatMap { $0[.png] ?? $0[.tiff] }
+            let maxPixelSize = Self.maxPixelSize
+            image = await Task.detached(priority: .userInitiated) {
+                data.flatMap { DecodedImage(data: $0, maxPixelSize: maxPixelSize) }
+            }.value
+        }
+    }
+}
+
+/// An image decoded and scaled down. Immutable, so safe to hand between threads.
+private struct DecodedImage: @unchecked Sendable {
+    let cgImage: CGImage
+
+    init?(data: Data, maxPixelSize: Int) {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int,
+              Artwork.isAcceptable(width: width, height: height),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+                  kCGImageSourceShouldCacheImmediately: true,
+              ] as CFDictionary)
+        else { return nil }
+        cgImage = image
     }
 }
