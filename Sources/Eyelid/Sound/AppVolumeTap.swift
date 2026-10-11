@@ -17,8 +17,8 @@ final class AppVolumeTap: @unchecked Sendable {
 
     /// The gain, from 0 to 1, set from the main thread and read on Core Audio's.
     private let gain: OSAllocatedUnfairLock<Float>
-    /// The gain the last buffer ended at. A change ramps across one buffer, rather than click. Only touched on
-    /// `queue`, from the IO block.
+    /// The gain the last buffer ended at. A change ramps across one buffer, rather than click. Only touched on Core
+    /// Audio's IO thread.
     private var appliedGain: Float
     /// The output device's own input channels, which come before the tap's in the aggregate's input.
     private var deviceInputChannels = 0
@@ -26,7 +26,6 @@ final class AppVolumeTap: @unchecked Sendable {
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var procID: AudioDeviceIOProcID?
-    private let queue = DispatchQueue(label: "io.github.satis-ku.eyelid.app-volume", qos: .userInteractive)
 
     /// Starts playing the app at `gain`, or returns nil if Core Audio refuses.
     init?(processes: [AudioObjectID], output: AudioDeviceID, outputUID: String, gain: Float) {
@@ -81,7 +80,9 @@ final class AppVolumeTap: @unchecked Sendable {
             return false
         }
 
-        status = AudioDeviceCreateIOProcIDWithBlock(&procID, aggregateID, queue) { [weak self] _, input, _, output, _ in
+        // No dispatch queue: the block runs on Core Audio's real-time IO thread, as playback must. Through a queue the
+        // output came late whenever the main thread was busy, such as redrawing the slider, and the sound stuttered.
+        status = AudioDeviceCreateIOProcIDWithBlock(&procID, aggregateID, nil) { [weak self] _, input, _, output, _ in
             self?.render(input, into: output)
         }
         guard status == noErr else {
@@ -112,7 +113,7 @@ final class AppVolumeTap: @unchecked Sendable {
         tapID = AudioObjectID(kAudioObjectUnknown)
     }
 
-    /// Copies the app's sound to the output at the gain. Runs on `queue`.
+    /// Copies the app's sound to the output at the gain. Runs on Core Audio's IO thread.
     private func render(_ input: UnsafePointer<AudioBufferList>, into output: UnsafeMutablePointer<AudioBufferList>) {
         let target = gain.withLockUnchecked { $0 }
         AppVolumeMixer.render(
