@@ -194,8 +194,18 @@ struct TranslatorTests {
             settings: settings,
             engine: engine,
             pasteboard: pasteboard,
-            preferredLanguages: { ["en-US", "ru-US"].map(Locale.Language.init(identifier:)) }
+            preferredLanguages: { ["en-US", "ru-US"].map(Locale.Language.init(identifier:)) },
+            typingPause: .milliseconds(10)
         )
+    }
+
+    /// The texts the engine was asked to translate.
+    private actor Calls {
+        var texts: [String] = []
+
+        func add(_ text: String) {
+            texts.append(text)
+        }
     }
 
     @Test func translatesIntoTheUsersOtherLanguage() async throws {
@@ -291,5 +301,77 @@ struct TranslatorTests {
         translator.copyTranslation()
 
         #expect(pasteboard.string(forType: .string) == "ru: Good morning, how are you today?")
+    }
+
+    @Test func typedTextIsTranslatedOnceTypingPauses() async {
+        let calls = Calls()
+        let translator = makeTranslator(engine: .fake { text, _, target in
+            await calls.add(text)
+            return "\(target.minimalIdentifier): \(text)"
+        })
+
+        translator.input = "Good"
+        translator.inputDidChange()
+        translator.input = "Good morning, how are you today?"
+        translator.inputDidChange()
+        #expect(translator.request == nil)
+        await translator.task?.value
+
+        #expect(translator.request?.outcome == .translated("ru: Good morning, how are you today?"))
+        #expect(await calls.texts == ["Good morning, how are you today?"])
+    }
+
+    @Test func returnTranslatesWithoutWaiting() {
+        let translator = makeTranslator()
+
+        translator.input = "Good morning, how are you today?"
+        translator.translateNow()
+
+        #expect(translator.request?.outcome == .translating)
+    }
+
+    @Test func clearingTheFieldClearsTheTranslation() async {
+        let translator = makeTranslator()
+        translator.translate("Good morning, how are you today?")
+        await translator.task?.value
+
+        translator.input = "  \n"
+        translator.inputDidChange()
+
+        #expect(translator.request == nil)
+        #expect(translator.task == nil)
+    }
+
+    /// Typing on shouldn't make the translation blink away while the next one is on its way.
+    @Test func translationStaysWhileTheNextIsOnItsWay() async {
+        let translator = makeTranslator()
+        translator.translate("Good morning, how are you today?")
+        await translator.task?.value
+
+        translator.input = "Good evening, how are you today?"
+        translator.translateNow()
+
+        #expect(translator.request?.outcome == .translating)
+        #expect(translator.request?.previous == "ru: Good morning, how are you today?")
+        #expect(translator.request?.target?.maximalIdentifier == "ru-Cyrl-RU")
+        await translator.task?.value
+        #expect(translator.request?.translation == "ru: Good evening, how are you today?")
+    }
+
+    @Test func spacesAloneDontTranslateAgain() async {
+        let calls = Calls()
+        let translator = makeTranslator(engine: .fake { text, _, _ in
+            await calls.add(text)
+            return text
+        })
+        translator.translate("Good morning, how are you today?")
+        await translator.task?.value
+
+        translator.input += " "
+        translator.inputDidChange()
+        await translator.task?.value
+
+        #expect(await calls.texts.count == 1)
+        #expect(translator.request?.translation == "Good morning, how are you today?")
     }
 }

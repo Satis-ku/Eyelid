@@ -27,7 +27,7 @@ Eyelid lives in the notch and blends in with it. Hover over the notch and it ope
 
 - **Blends in.** The closed notch matches the hardware cutout, so you don't notice Eyelid until you need it.
 - **Hover to open.** The notch opens when the pointer reaches it and closes when the pointer leaves. You can add a delay, and Force Touch trackpads give a haptic tick.
-- **Tabs** in the open notch: Now Playing, the file shelf, the clipboard history once you turn it on, Sound, and your latest translation.
+- **Tabs** in the open notch: Now Playing, the file shelf, the clipboard history once you turn it on, Sound, and the translator.
 - **Stays out of the way.** No Dock icon, on every Space and over full-screen apps. Clicks pass through to the menu bar while the notch is closed.
 - **Macs without a notch** get a virtual one at the top of the main display.
 - **Several displays.** By default the notch follows the pointer from display to display. It can also stay on one display, or show on every display, each with its own hover. The volume HUD, battery and output changes, and the clipboard history show up on the display with the pointer.
@@ -86,11 +86,12 @@ Eyelid lives in the notch and blends in with it. Hover over the notch and it ope
 
 ### Translation
 
-- **⌘C twice.** Copy text twice in a row, anywhere, and the notch opens with its translation. You can also set a shortcut that translates what's copied already.
+- **Type or paste.** ⌥T opens the translator in the notch, wherever you are, with the keyboard in its field. The translation follows as you type, and Escape closes it. You can record a different shortcut in Settings, and a click on the field works too.
+- **⌘C twice.** If you turn it on, copying text twice in a row, anywhere, opens the notch with its translation.
 - **On your Mac.** Apple's Translation does the work offline, with the languages downloaded in **System Settings → General → Language & Region → Translation Languages**. Needs macOS 26 or later.
 - **Knows your languages.** Text goes into your first language in Language & Region, or into your next one if it's in that already. You can pick a language in Settings instead.
-- **Out of the way.** The translation closes once the pointer has been over it and left, on a click elsewhere, or after enough time to read it. Its tab keeps it a click away, with a button to copy it.
-- **Off by default,** since it reads what you copy twice. Passwords that password managers mark as concealed are left alone.
+- **Out of the way.** A translation of a double copy closes once the pointer has been over it and left, on a click elsewhere, or after enough time to read it. The translator tab keeps the latest one a click away, with a button to copy it.
+- **⌘C twice is off by default,** since it reads what you copy. Passwords that password managers mark as concealed are left alone.
 
 ### Settings
 
@@ -104,7 +105,7 @@ The eye icon in the menu bar opens Settings and quits Eyelid.
 | Battery | Battery activity |
 | Shelf | The file shelf, whether dragged-out files leave it, and a button to clear it |
 | Clipboard | The clipboard history, its shortcut, pasting right away, and a button to clear it |
-| Translation | Translating with ⌘C twice, the language to translate into, and a shortcut |
+| Translation | The translator's shortcut, translating with ⌘C twice, and the language to translate into |
 
 <img src="docs/images/settings.png" alt="The Volume & Brightness tab of Eyelid's settings: the HUD with its level style, output changes, and an icon for each output device" width="420">
 
@@ -160,7 +161,7 @@ Releases are signed ad hoc, so macOS ties the permission to one exact build. Aft
 - **Accessibility only if you ask for it.** Eyelid requests it only when you turn on the volume and brightness HUD, and then handles only the volume, mute and brightness keys. Other keys aren't touched.
 - **The shelf doesn't read your files.** It keeps bookmarks to them in user defaults. Previews come from Quick Look, which runs in its own sandboxed process.
 - **The clipboard history is opt-in and stays in memory.** It's gone when Eyelid quits, except for copies you pin, which are saved in Eyelid's Application Support folder. Copies that password managers mark as concealed or transient aren't kept. Since macOS 15.4, macOS also asks before an app reads what other apps copy: allow Eyelid under **Privacy & Security → Paste from Other Apps**, then reopen it.
-- **Translation stays on your Mac.** With it on, Eyelid reads the text only when you copy it twice or press the shortcut, and Apple's Translation translates it offline. Nothing is kept but the latest translation, in memory.
+- **Translation stays on your Mac.** Apple's Translation translates what you type offline. With ⌘C twice on, Eyelid reads what you copy only after a double copy. Nothing is kept but the latest translation, in memory.
 - **The equalizer listens only if you ask it to.** With **Equalizer follows the sound** on, and only while something plays, Eyelid taps the system audio through Core Audio to measure how loud the bass, mids and treble are. Each buffer is measured in memory and dropped: nothing is recorded, kept or sent. macOS asks for permission under **Privacy & Security → Screen & System Audio Recording**, and shows the recording indicator while Eyelid listens.
 - **Settings** are stored in macOS user defaults.
 

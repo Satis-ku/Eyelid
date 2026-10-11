@@ -1,36 +1,38 @@
 import AppKit
 import SwiftUI
 
-/// The translation of what was copied, in the open notch: the two languages, the original, and the translation.
+/// The translator in the open notch: a field for the text, typed, pasted or copied twice, and its translation.
 struct TranslationPanel: View {
-    let translator: Translator
+    @Bindable var translator: Translator
+    /// Whether the field has the keyboard. The notch takes it only once the field is clicked, so the app in front
+    /// keeps it until then.
+    let isTyping: Bool
+    let beginTyping: @MainActor () -> Void
+    @FocusState private var isFieldFocused: Bool
     @State private var didCopy = false
 
     var body: some View {
-        if let request = translator.request {
-            VStack(alignment: .leading, spacing: TranslationLayout.spacing) {
-                header(request)
-                if !request.text.isEmpty {
-                    Text(request.text)
-                        .font(.system(size: TranslationLayout.sourceSize))
-                        .foregroundStyle(.white.opacity(0.5))
-                        .lineLimit(TranslationLayout.sourceLines)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+        VStack(alignment: .leading, spacing: TranslationLayout.spacing) {
+            header
+            field
+            if let request = translator.request {
                 outcome(request)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(.top, TranslationLayout.topPadding)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.top, TranslationLayout.topPadding)
+        .onChange(of: isTyping, initial: true) { _, isTyping in
+            isFieldFocused = isTyping
         }
     }
 
-    private func header(_ request: Translator.Request) -> some View {
+    private var header: some View {
         HStack(spacing: 8) {
-            Text(request.languages)
+            Text(translator.request?.languages ?? "Translation")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.5))
             Spacer()
-            if case .translated = request.outcome {
+            if translator.request?.translation != nil {
                 Button {
                     translator.copyTranslation()
                     didCopy = true
@@ -54,26 +56,54 @@ struct TranslationPanel: View {
         .frame(height: TranslationLayout.headerHeight)
     }
 
+    private var field: some View {
+        TextField("Type or paste text to translate", text: $translator.input, axis: .vertical)
+            .textFieldStyle(.plain)
+            .font(.system(size: TranslationLayout.inputSize))
+            .foregroundStyle(.white.opacity(0.85))
+            .lineLimit(1...TranslationLayout.inputLines)
+            .focused($isFieldFocused)
+            .onChange(of: translator.input) {
+                translator.inputDidChange()
+            }
+            .onSubmit {
+                translator.translateNow()
+            }
+            .padding(.horizontal, TranslationLayout.inputPadding.width)
+            .padding(.vertical, TranslationLayout.inputPadding.height)
+            .background(
+                .white.opacity(isTyping ? 0.12 : 0.07),
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
+            .overlay {
+                if !isTyping {
+                    // Clicks don't reach a field in a panel without the keyboard, so this asks for it.
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture(perform: beginTyping)
+                }
+            }
+    }
+
     @ViewBuilder
     private func outcome(_ request: Translator.Request) -> some View {
         switch request.outcome {
         case .translating:
-            HStack(spacing: 6) {
-                ProgressView()
-                    .controlSize(.mini)
-                Text("Translating…")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5))
+            if let previous = request.previous {
+                // The translation so far stays, dimmed, until the next one is in.
+                translation(previous)
+                    .opacity(0.45)
+            } else {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text("Translating…")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
             }
         case .translated(let translated):
-            // Scrolling needs no click, so it works although the notch never takes the keyboard.
-            ScrollView {
-                Text(translated)
-                    .font(.system(size: TranslationLayout.translationSize, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .scrollIndicators(.automatic)
+            translation(translated)
         case .failed(let failure):
             VStack(alignment: .leading, spacing: 8) {
                 Text(request.message(for: failure))
@@ -96,35 +126,50 @@ struct TranslationPanel: View {
             }
         }
     }
+
+    private func translation(_ text: String) -> some View {
+        // Scrolling needs no click, so a long translation scrolls even before the notch has the keyboard.
+        ScrollView {
+            Text(text)
+                .font(.system(size: TranslationLayout.translationSize, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollIndicators(.automatic)
+    }
 }
 
-/// Sizes shared by the panel and the notch, which grows to fit a long translation.
+/// Sizes shared by the panel and the notch, which grows with the text and its translation.
 enum TranslationLayout {
     static let topPadding: CGFloat = 2
     static let headerHeight: CGFloat = 18
     static let spacing: CGFloat = 6
-    static let sourceSize: CGFloat = 12
-    static let sourceLines = 2
+    static let inputSize: CGFloat = 13
+    /// The field grows to this many lines, then scrolls.
+    static let inputLines = 3
+    static let inputPadding = CGSize(width: 8, height: 5)
     static let translationSize: CGFloat = 14
     /// A line of "Translating…", or a message and a button.
     static let translatingHeight: CGFloat = 18
     static let failureHeight: CGFloat = 54
 
-    /// How tall the panel would like to be for `request`, `width` wide.
+    /// How tall the panel would like to be for `input` and `request`, `width` wide.
     @MainActor
-    static func height(for request: Translator.Request, width: CGFloat) -> CGFloat {
-        var height = topPadding + headerHeight
-        if !request.text.isEmpty {
-            let font = NSFont.systemFont(ofSize: sourceSize)
-            let lines = lineHeight(font) * CGFloat(sourceLines)
-            height += spacing + min(textHeight(request.text, font: font, width: width), lines)
-        }
+    static func height(input: String, request: Translator.Request?, width: CGFloat) -> CGFloat {
+        let inputFont = NSFont.systemFont(ofSize: inputSize)
+        let inputWidth = width - 2 * inputPadding.width
+        let lines = lineHeight(inputFont)
+        let inputHeight = min(max(textHeight(input, font: inputFont, width: inputWidth), lines), lines * CGFloat(inputLines))
+        var height = topPadding + headerHeight + spacing + inputHeight + 2 * inputPadding.height
+        guard let request else { return ceil(height) }
+
+        let translationFont = NSFont.systemFont(ofSize: translationSize, weight: .medium)
         height += spacing
         switch request.outcome {
         case .translating:
-            height += translatingHeight
+            height += request.previous.map { textHeight($0, font: translationFont, width: width) } ?? translatingHeight
         case .translated(let translated):
-            height += textHeight(translated, font: .systemFont(ofSize: translationSize, weight: .medium), width: width)
+            height += textHeight(translated, font: translationFont, width: width)
         case .failed:
             height += failureHeight
         }

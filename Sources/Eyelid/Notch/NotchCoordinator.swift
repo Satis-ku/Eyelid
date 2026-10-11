@@ -77,7 +77,7 @@ final class NotchCoordinator {
             self?.translateCopiedText()
         }
         translationShortcut.onPress = { [weak self] in
-            self?.translateCopiedText()
+            self?.toggleTranslator()
         }
     }
 
@@ -98,6 +98,16 @@ final class NotchCoordinator {
             open.toggleClipboard()
         } else {
             activeNotch?.toggleClipboard()
+        }
+    }
+
+    /// Opens the translator to type in where the user is looking, or closes it wherever it's open.
+    private func toggleTranslator() {
+        guard translator.isAvailable else { return }
+        if let open = controllers.first(where: \.isTypingTranslation) {
+            open.toggleTranslator()
+        } else {
+            activeNotch?.toggleTranslator()
         }
     }
 

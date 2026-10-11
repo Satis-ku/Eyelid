@@ -18,30 +18,9 @@ struct TranslationSettings: View {
             }
 
             Section {
-                Toggle(isOn: $settings.translatesOnDoubleCopy) {
-                    Text("Translate with ⌘C ⌘C")
-                    Text("Copy text twice in a row, and the notch shows it translated.")
-                }
-
-                Picker(selection: $settings.translationTarget) {
-                    Text("Automatic").tag(String?.none)
-                    Divider()
-                    ForEach(languages, id: \.maximalIdentifier) { language in
-                        Text(TranslationLanguages.fullName(of: language)).tag(String?.some(language.maximalIdentifier))
-                    }
-                } label: {
-                    Text("Translate into")
-                    Text("Automatic picks your first language in Language & Region, or your next one for text already in it.")
-                }
-            } footer: {
-                Text("Apple's Translation translates on this Mac, with the languages downloaded in System Settings → General → Language & Region → Translation Languages. Nothing is sent anywhere.")
-            }
-            .disabled(!translator.isAvailable)
-
-            Section {
                 Toggle(isOn: $settings.translationShortcutEnabled) {
-                    Text("Translate with a shortcut")
-                    Text("Translates what's copied already.")
+                    Text("Open the translator with a shortcut")
+                    Text("Opens the translator in the notch, ready to type or paste text. Escape closes it.")
                 }
 
                 LabeledContent {
@@ -57,7 +36,31 @@ struct TranslationSettings: View {
             }
             .disabled(!translator.isAvailable)
 
-            if settings.translatesOnDoubleCopy || settings.translationShortcutEnabled, let access, access != .allowed {
+            Section {
+                Toggle(isOn: $settings.translatesOnDoubleCopy) {
+                    Text("Translate with ⌘C ⌘C")
+                    Text("Copy text twice in a row, anywhere, and the notch shows it translated.")
+                }
+            }
+            .disabled(!translator.isAvailable)
+
+            Section {
+                Picker(selection: $settings.translationTarget) {
+                    Text("Automatic").tag(String?.none)
+                    Divider()
+                    ForEach(languages, id: \.maximalIdentifier) { language in
+                        Text(TranslationLanguages.fullName(of: language)).tag(String?.some(language.maximalIdentifier))
+                    }
+                } label: {
+                    Text("Translate into")
+                    Text("Automatic picks your first language in Language & Region, or your next one for text already in it.")
+                }
+            } footer: {
+                Text("Apple's Translation translates on this Mac, with the languages downloaded in System Settings → General → Language & Region → Translation Languages. Nothing is sent anywhere.")
+            }
+            .disabled(!translator.isAvailable)
+
+            if settings.translatesOnDoubleCopy, let access, access != .allowed {
                 Section {
                     LabeledContent {
                         Button("Open Privacy & Security") {

@@ -105,11 +105,22 @@ private struct OpenNotchView: View {
                     HUDView(event: hud, style: model.settings.hudLevelStyle, notchSize: model.geometry.notchSize)
                         .transition(.opacity)
                 } else {
-                    HStack {
-                        NotchTabs(model: model)
-                        Spacer()
-                        OpenNotchStatus(battery: model.battery.state, showsDate: model.settings.showsDateInOpenNotch)
-                            .frame(maxWidth: model.statusWidth, alignment: .trailing)
+                    let tabs = model.tabs
+                    let leading = model.leadingTabCount
+                    HStack(spacing: 0) {
+                        NotchTabs(model: model, tabs: Array(tabs.prefix(leading)))
+                        Spacer(minLength: 0)
+                        // Tabs that don't fit left of the camera go right of it, and the date makes room.
+                        HStack(spacing: 0) {
+                            if leading < tabs.count {
+                                NotchTabs(model: model, tabs: Array(tabs.dropFirst(leading)))
+                                    .padding(.leading, NotchViewModel.Layout.cameraGap)
+                            }
+                            Spacer(minLength: 0)
+                            OpenNotchStatus(battery: model.battery.state, showsDate: model.settings.showsDateInOpenNotch)
+                                .frame(maxWidth: model.statusWidth - model.trailingTabsWidth, alignment: .trailing)
+                        }
+                        .frame(width: model.statusWidth)
                     }
                     .transition(.opacity)
                 }
@@ -125,7 +136,11 @@ private struct OpenNotchView: View {
                 } else if model.showsSound {
                     SoundPanel(sound: model.sound, settings: model.settings)
                 } else if model.showsTranslation {
-                    TranslationPanel(translator: model.translator)
+                    TranslationPanel(
+                        translator: model.translator,
+                        isTyping: model.isTypingTranslation,
+                        beginTyping: model.typeTranslation
+                    )
                 } else if let track = model.nowPlaying.track {
                     NowPlayingCard(track: track, nowPlaying: model.nowPlaying)
                 } else {
@@ -141,39 +156,41 @@ private struct OpenNotchView: View {
     }
 }
 
-/// Switches the open notch between now playing, the shelf, the clipboard history, sound and the latest translation.
+/// Switches the open notch between now playing, the shelf, the clipboard history, sound and the translator.
 private struct NotchTabs: View {
     let model: NotchViewModel
+    let tabs: [NotchViewModel.Tab]
 
     var body: some View {
-        HStack(spacing: 2) {
-            TabButton(title: "Now Playing", systemImage: "music.note", isSelected: model.tab == .nowPlaying) {
-                model.tab = .nowPlaying
-            }
-            if model.settings.shelfEnabled {
-                TabButton(
-                    title: "Shelf",
-                    systemImage: model.shelf.items.isEmpty ? "tray" : "tray.full",
-                    isSelected: model.tab == .shelf
-                ) {
-                    model.tab = .shelf
+        HStack(spacing: NotchViewModel.Layout.tabSpacing) {
+            ForEach(tabs, id: \.self) { tab in
+                TabButton(title: title(of: tab), systemImage: systemImage(of: tab), isSelected: model.tab == tab) {
+                    if tab == .clipboard {
+                        model.resetClipboard()
+                    }
+                    model.tab = tab
                 }
             }
-            if model.settings.clipboardEnabled {
-                TabButton(title: "Clipboard", systemImage: "doc.on.clipboard", isSelected: model.tab == .clipboard) {
-                    model.resetClipboard()
-                    model.tab = .clipboard
-                }
-            }
-            TabButton(title: "Sound", systemImage: "speaker.wave.2", isSelected: model.tab == .sound) {
-                model.tab = .sound
-            }
-            // Once something was translated, its translation stays a click away.
-            if model.translator.request != nil {
-                TabButton(title: "Translation", systemImage: "translate", isSelected: model.tab == .translation) {
-                    model.tab = .translation
-                }
-            }
+        }
+    }
+
+    private func title(of tab: NotchViewModel.Tab) -> String {
+        switch tab {
+        case .nowPlaying: "Now Playing"
+        case .shelf: "Shelf"
+        case .clipboard: "Clipboard"
+        case .sound: "Sound"
+        case .translation: "Translation"
+        }
+    }
+
+    private func systemImage(of tab: NotchViewModel.Tab) -> String {
+        switch tab {
+        case .nowPlaying: "music.note"
+        case .shelf: model.shelf.items.isEmpty ? "tray" : "tray.full"
+        case .clipboard: "doc.on.clipboard"
+        case .sound: "speaker.wave.2"
+        case .translation: "translate"
         }
     }
 }
@@ -189,7 +206,7 @@ private struct TabButton: View {
             Image(systemName: systemImage)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(isSelected ? 1 : 0.45))
-                .frame(width: 28, height: 22)
+                .frame(width: NotchViewModel.Layout.tabWidth, height: 22)
                 .background(.white.opacity(isSelected ? 0.14 : 0), in: Capsule())
                 .contentShape(Capsule())
         }

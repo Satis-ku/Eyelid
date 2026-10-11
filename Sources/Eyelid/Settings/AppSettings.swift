@@ -165,12 +165,12 @@ final class AppSettings {
         didSet { defaults.set(translationTarget, forKey: Key.translationTarget) }
     }
 
-    /// Whether `translationHotKey` translates what's copied already. Off by default.
+    /// Whether `translationHotKey` opens the translator in the notch, to type or paste text.
     var translationShortcutEnabled: Bool {
         didSet { defaults.set(translationShortcutEnabled, forKey: Key.translationShortcutEnabled) }
     }
 
-    /// The shortcut that translates what's copied.
+    /// The shortcut that opens the translator.
     var translationHotKey: HotKey {
         didSet { Self.store(translationHotKey, as: Key.translationHotKey, in: defaults) }
     }
@@ -209,7 +209,7 @@ final class AppSettings {
         liveActivityHotKey = Self.hotKey(Key.liveActivityHotKey, in: defaults) ?? .liveActivityDefault
         translatesOnDoubleCopy = defaults.object(forKey: Key.translatesOnDoubleCopy) as? Bool ?? false
         translationTarget = defaults.object(forKey: Key.translationTarget) as? String
-        translationShortcutEnabled = defaults.object(forKey: Key.translationShortcutEnabled) as? Bool ?? false
+        translationShortcutEnabled = defaults.object(forKey: Key.translationShortcutEnabled) as? Bool ?? true
         translationHotKey = Self.hotKey(Key.translationHotKey, in: defaults) ?? .translationDefault
     }
 

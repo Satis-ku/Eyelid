@@ -24,7 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     private(set) lazy var translationShortcut = Shortcut(
         center: hotKeys,
-        isEnabled: { [settings] in settings.translationShortcutEnabled },
+        // On Macs that can't translate, ⌥T stays free.
+        isEnabled: { [settings, translator] in settings.translationShortcutEnabled && translator.isAvailable },
         hotKey: { [settings] in settings.translationHotKey }
     )
     private lazy var hud = HUDService(settings: settings)

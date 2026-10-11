@@ -24,6 +24,11 @@ final class NotchViewModel {
         static let openHorizontalPadding: CGFloat = 18
         /// Room below the open notch's content.
         static let openBottomPadding: CGFloat = 14
+        /// Each tab button in the strip beside the camera, and the room between them.
+        static let tabWidth: CGFloat = 28
+        static let tabSpacing: CGFloat = 2
+        /// Room between the camera and tabs right of it.
+        static let cameraGap: CGFloat = 6
         /// Height of the open notch below the hardware notch strip.
         static let openContentHeight: CGFloat = 108
         /// The clipboard history needs room for a list, so the notch grows taller for it.
@@ -82,8 +87,8 @@ final class NotchViewModel {
     var isDraggingFiles = false
     /// Whether files are being dragged over the open notch, which would add them to the shelf.
     var isDropTargeted = false
-    /// Whether the notch stays open wherever the pointer goes: after the clipboard shortcut, until an entry is
-    /// picked, Escape is pressed or the user clicks elsewhere.
+    /// Whether the notch has the keyboard and stays open wherever the pointer goes: for the clipboard history after
+    /// its shortcut, or for typing a translation, until Escape, a click elsewhere, or an entry is picked.
     var isHeldOpen = false
     /// Whether the notch stays open after showing a translation, until the pointer has been over it and left, a
     /// click elsewhere, or it has had time to be read.
@@ -111,6 +116,8 @@ final class NotchViewModel {
     var isHoveringEqualizer = false
     /// Opens the notch on the Sound tab. Set by the window controller, which owns opening.
     @ObservationIgnored var openSound: @MainActor () -> Void = {}
+    /// Gives the translation's text field the keyboard, after a click on it. Set by the window controller.
+    @ObservationIgnored var typeTranslation: @MainActor () -> Void = {}
     /// Set by the window controller, which owns opening and closing.
     @ObservationIgnored var close: @MainActor () -> Void = {}
     /// Presses ⌘V in the app in front. Set by the window controller, which knows when it has the keyboard back.
@@ -153,15 +160,50 @@ final class NotchViewModel {
     }
 
     var showsTranslation: Bool {
-        tab == .translation && translator.request != nil
+        tab == .translation && translator.isAvailable
     }
 
     /// As tall as the translation needs, within the notch's limits; a longer one scrolls.
     var translationContentHeight: CGFloat {
-        guard let request = translator.request else { return Layout.openContentHeight }
         let width = Layout.openWidth - 2 * Layout.openHorizontalPadding
-        let needed = TranslationLayout.height(for: request, width: width) + Layout.openBottomPadding
+        let panel = TranslationLayout.height(input: translator.input, request: translator.request, width: width)
+        let needed = panel + Layout.openBottomPadding
         return min(max(needed, Layout.openContentHeight), Layout.clipboardContentHeight)
+    }
+
+    /// The tabs in the strip beside the camera, in order.
+    var tabs: [Tab] {
+        var tabs: [Tab] = [.nowPlaying]
+        if settings.shelfEnabled {
+            tabs.append(.shelf)
+        }
+        if settings.clipboardEnabled {
+            tabs.append(.clipboard)
+        }
+        tabs.append(.sound)
+        if translator.isAvailable {
+            tabs.append(.translation)
+        }
+        return tabs
+    }
+
+    /// How many tabs fit left of the camera. The rest go right of it, before the date and battery, which then
+    /// show less.
+    var leadingTabCount: Int {
+        let fitting = Int((statusWidth + Layout.tabSpacing) / (Layout.tabWidth + Layout.tabSpacing))
+        return min(tabs.count, max(fitting, 1))
+    }
+
+    /// The width the tabs right of the camera take, with the room between them and the date.
+    var trailingTabsWidth: CGFloat {
+        let count = tabs.count - leadingTabCount
+        guard count > 0 else { return 0 }
+        return Layout.cameraGap + CGFloat(count) * (Layout.tabWidth + Layout.tabSpacing)
+    }
+
+    /// Whether the translation's text field has the keyboard, which holds the notch open.
+    var isTypingTranslation: Bool {
+        state == .open && isHeldOpen && tab == .translation
     }
 
     /// As tall as the outputs need, within limits.

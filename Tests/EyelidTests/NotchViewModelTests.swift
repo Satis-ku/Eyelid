@@ -372,4 +372,54 @@ struct NotchViewModelTests {
         model.choose(entry)
         #expect(pastes == 1)
     }
+
+    // MARK: - Tabs and the translator
+
+    /// Five tabs don't fit left of a 185-point camera, so the last goes right of it.
+    @Test func tabsThatDontFitGoRightOfTheCamera() {
+        let model = makeModel()
+        model.settings.clipboardEnabled = true
+
+        #expect(model.tabs == [.nowPlaying, .shelf, .clipboard, .sound, .translation])
+        #expect(model.leadingTabCount == 4)
+        #expect(model.trailingTabsWidth == NotchViewModel.Layout.cameraGap + NotchViewModel.Layout.tabWidth
+            + NotchViewModel.Layout.tabSpacing)
+        let leadingWidth = CGFloat(model.leadingTabCount) * (NotchViewModel.Layout.tabWidth + NotchViewModel.Layout.tabSpacing)
+        #expect(leadingWidth <= model.statusWidth + NotchViewModel.Layout.tabSpacing)
+    }
+
+    @Test func fourTabsFitLeftOfTheCamera() {
+        let model = makeModel()
+
+        #expect(model.tabs == [.nowPlaying, .shelf, .sound, .translation])
+        #expect(model.leadingTabCount == 4)
+        #expect(model.trailingTabsWidth == 0)
+    }
+
+    @Test func notchGrowsWithTheTranslation() async {
+        let model = makeModel()
+        model.state = .open
+        model.tab = .translation
+        let empty = model.bodySize.height
+
+        model.translator.translate(String(repeating: "A long sentence to translate, again and again. ", count: 12))
+        await model.translator.task?.value
+
+        #expect(empty == 32 + NotchViewModel.Layout.openContentHeight)
+        #expect(model.bodySize.height > empty)
+        #expect(model.bodySize.height <= 32 + NotchViewModel.Layout.clipboardContentHeight)
+    }
+
+    @Test func typingNeedsTheKeyboardOnTheTranslator() {
+        let model = makeModel()
+        model.state = .open
+        model.tab = .translation
+        #expect(!model.isTypingTranslation)
+
+        model.isHeldOpen = true
+        #expect(model.isTypingTranslation)
+
+        model.tab = .clipboard
+        #expect(!model.isTypingTranslation)
+    }
 }

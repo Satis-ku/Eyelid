@@ -44,3 +44,28 @@ struct ClipboardKeyTests {
         #expect(key(kVK_Tab, "\t") == .other)
     }
 }
+
+@Suite("Editing keys in the notch")
+struct TextEditingKeyTests {
+    @Test(arguments: [
+        (kVK_ANSI_V, "v", NSEvent.ModifierFlags.command, TextEditingKey.paste),
+        (kVK_ANSI_C, "c", [.command], .copy),
+        (kVK_ANSI_X, "x", [.command], .cut),
+        (kVK_ANSI_A, "a", [.command], .selectAll),
+        (kVK_ANSI_Z, "z", [.command], .undo),
+        (kVK_ANSI_Z, "z", [.command, .shift], .redo),
+        // The Russian layout types Cyrillic, so the key's place counts, as for menu shortcuts.
+        (kVK_ANSI_V, "м", [.command], .paste),
+    ] as [(Int, String, NSEvent.ModifierFlags, TextEditingKey)])
+    func editingShortcuts(keyCode: Int, characters: String, modifiers: NSEvent.ModifierFlags, expected: TextEditingKey) {
+        let key = TextEditingKey(keyCode: keyCode, charactersIgnoringModifiers: characters, modifierFlags: modifiers)
+
+        #expect(key == expected)
+    }
+
+    @Test func typingIsntEditing() {
+        #expect(TextEditingKey(keyCode: kVK_ANSI_V, charactersIgnoringModifiers: "v", modifierFlags: []) == nil)
+        #expect(TextEditingKey(keyCode: kVK_ANSI_V, charactersIgnoringModifiers: "v", modifierFlags: .option) == nil)
+        #expect(TextEditingKey(keyCode: kVK_ANSI_P, charactersIgnoringModifiers: "p", modifierFlags: .command) == nil)
+    }
+}

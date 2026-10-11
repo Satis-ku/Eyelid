@@ -53,17 +53,23 @@ struct TranslationEngine: Sendable {
     }
 }
 
-/// Translates text on this Mac with Apple's Translation, for the notch: what's copied twice in a row, or with the
-/// shortcut, what's copied already.
+/// Translates text on this Mac with Apple's Translation, for the notch: what's typed in its field, or what's copied
+/// twice in a row.
 @MainActor
 @Observable
 final class Translator {
     /// A text to translate, and how far it got.
     struct Request: Equatable {
         let text: String
-        var source: Locale.Language?
-        var target: Locale.Language?
+        var source: Locale.Language? = nil
+        var target: Locale.Language? = nil
         var outcome: Outcome
+        /// The translation of the text before, shown until this one's comes, so typing doesn't make it blink.
+        var previous: String? = nil
+
+        var translation: String? {
+            if case .translated(let translation) = outcome { translation } else { nil }
+        }
     }
 
     enum Outcome: Equatable {
@@ -90,16 +96,23 @@ final class Translator {
     /// Longer texts are cut here: the notch has room for a few paragraphs at most.
     static let maxLength = 5_000
 
-    /// The latest translation, shown in the notch until the next one.
+
+    /// The text in the notch's field: typed, pasted, or copied twice.
+    var input = ""
+    /// The latest translation, shown in the notch until the next one. Nil while there's nothing to translate.
     private(set) var request: Request?
 
     @ObservationIgnored private let settings: AppSettings
     @ObservationIgnored private let engine: TranslationEngine?
     @ObservationIgnored private let pasteboard: NSPasteboard
     @ObservationIgnored private let preferredLanguages: @MainActor () -> [Locale.Language]
+    /// After a pause this long in typing, what's typed is translated.
+    @ObservationIgnored let typingPause: Duration
     @ObservationIgnored private var supported: [Locale.Language]?
-    /// The translation under way; tests wait on it.
+    /// The translation under way, or waiting for typing to pause; tests wait on it.
     @ObservationIgnored private(set) var task: Task<Void, Never>?
+    /// The text `task` is about.
+    @ObservationIgnored private var taskText: String?
 
     init(
         settings: AppSettings,
@@ -107,9 +120,11 @@ final class Translator {
         pasteboard: NSPasteboard = .general,
         preferredLanguages: @escaping @MainActor () -> [Locale.Language] = {
             Locale.preferredLanguages.map(Locale.Language.init(identifier:))
-        }
+        },
+        typingPause: Duration = .milliseconds(400)
     ) {
         self.settings = settings
+        self.typingPause = typingPause
         self.engine = engine
         self.pasteboard = pasteboard
         self.preferredLanguages = preferredLanguages
@@ -152,17 +167,65 @@ final class Translator {
         translate(text)
     }
 
+    /// Translates `text` right away, and shows it in the field.
     func translate(_ text: String) {
+        input = text
+        translateInput(after: nil)
+    }
+
+    /// Translates what's typed without waiting for a pause, as Return does.
+    func translateNow() {
+        translateInput(after: nil)
+    }
+
+    /// Translates what's typed, once typing pauses. The field calls this as it changes.
+    func inputDidChange() {
+        translateInput(after: typingPause)
+    }
+
+    /// Translates the input now, or after `delay` unless it changes again first. What's on its way or shown
+    /// already isn't translated again.
+    private func translateInput(after delay: Duration?) {
+        let text = String(input.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxLength))
+        guard text != taskText else { return }
         task?.cancel()
-        guard let engine else {
-            fail(text: text, .needsNewerMacOS)
+        task = nil
+        taskText = nil
+        if text == request?.text, request?.outcome != .translating {
             return
         }
-        let text = String(text.prefix(Self.maxLength))
-        request = Request(text: text, outcome: .translating)
+        guard !text.isEmpty else {
+            request = nil
+            return
+        }
+        guard let engine else {
+            request = Request(text: text, outcome: .failed(.needsNewerMacOS))
+            return
+        }
+
+        taskText = text
+        if delay == nil {
+            begin(text)
+        }
         task = Task { [weak self] in
+            if let delay {
+                try? await Task.sleep(for: delay)
+                guard !Task.isCancelled else { return }
+                self?.begin(text)
+            }
             await self?.run(text, with: engine)
         }
+    }
+
+    /// Starts on `text`, keeping the languages and translation shown until the new ones are known.
+    private func begin(_ text: String) {
+        request = Request(
+            text: text,
+            source: request?.source,
+            target: request?.target,
+            outcome: .translating,
+            previous: request?.translation ?? request?.previous
+        )
     }
 
     private func run(_ text: String, with engine: TranslationEngine) async {
@@ -217,6 +280,7 @@ final class Translator {
     private func fail(text: String, _ failure: Failure) {
         task?.cancel()
         task = nil
+        taskText = nil
         request = Request(text: text, outcome: .failed(failure))
     }
 
