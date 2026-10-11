@@ -75,7 +75,9 @@ struct NotchView: View {
             BatteryActivityView(event: event, notchSize: model.geometry.notchSize)
                 .transition(.opacity)
         } else if model.showsNowPlayingActivity, let track = model.nowPlaying.track {
-            ClosedActivityView(track: track, notchSize: model.geometry.notchSize, levels: model.audioLevels.levels)
+            ClosedActivityView(track: track, notchSize: model.geometry.notchSize, levels: model.audioLevels.levels) {
+                model.openSound()
+            }
                 .transition(.opacity)
         } else if model.showsIdleActivity {
             IdleActivityView(battery: model.battery.state, notchSize: model.geometry.notchSize)
@@ -97,9 +99,7 @@ private struct OpenNotchView: View {
                         .transition(.opacity)
                 } else {
                     HStack {
-                        if model.settings.shelfEnabled || model.settings.clipboardEnabled {
-                            NotchTabs(model: model)
-                        }
+                        NotchTabs(model: model)
                         Spacer()
                         OpenNotchStatus(battery: model.battery.state, showsDate: model.settings.showsDateInOpenNotch)
                             .frame(maxWidth: model.statusWidth, alignment: .trailing)
@@ -115,6 +115,8 @@ private struct OpenNotchView: View {
                     ShelfView(model: model)
                 } else if model.showsClipboard {
                     ClipboardView(model: model)
+                } else if model.showsSound {
+                    SoundPanel(sound: model.sound, settings: model.settings)
                 } else if let track = model.nowPlaying.track {
                     NowPlayingCard(track: track, nowPlaying: model.nowPlaying)
                 } else {
@@ -153,6 +155,9 @@ private struct NotchTabs: View {
                     model.resetClipboard()
                     model.tab = .clipboard
                 }
+            }
+            TabButton(title: "Sound", systemImage: "speaker.wave.2", isSelected: model.tab == .sound) {
+                model.tab = .sound
             }
         }
     }

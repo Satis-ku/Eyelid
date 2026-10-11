@@ -59,6 +59,9 @@ final class NotchWindowController {
         model.pasteIntoFrontApp = {
             Paster.paste()
         }
+        model.openSound = { [weak self] in
+            self?.openSound()
+        }
         // Clicking another window takes the keyboard away from the clipboard history, which then goes away.
         observers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification,
@@ -127,6 +130,10 @@ final class NotchWindowController {
     // MARK: - Volume and brightness
 
     func show(_ event: HUDEvent) {
+        // The Sound tab shows the volume already, and moves with the slider.
+        if event.kind == .volume, model.state == .open, model.showsSound {
+            return
+        }
         dismissTrackTitle()
         model.hud = event
         // Holding a key repeats it, so the HUD stays until the last press plus the duration.
@@ -190,6 +197,14 @@ final class NotchWindowController {
         model.trackTitle = nil
     }
 
+    // MARK: - Sound
+
+    /// Opens the notch on the Sound tab, after a click on the equalizer.
+    private func openSound() {
+        model.tab = .sound
+        open()
+    }
+
     // MARK: - Hover
 
     private func installMouseMonitors() {
@@ -249,7 +264,13 @@ final class NotchWindowController {
             model.isDraggingFiles = false
         }
 
-        let isInside = model.hoverRect.contains(NSEvent.mouseLocation)
+        let pointer = NSEvent.mouseLocation
+        // The equalizer takes clicks, for the Sound tab, rather than opening the notch on hover.
+        let isOverEqualizer = model.equalizerRect?.contains(pointer) == true
+        if model.state == .closed {
+            panel.ignoresMouseEvents = !isOverEqualizer
+        }
+        let isInside = model.hoverRect.contains(pointer) && !isOverEqualizer
         switch (model.state, isInside) {
         case (.closed, true):
             scheduleOpen()

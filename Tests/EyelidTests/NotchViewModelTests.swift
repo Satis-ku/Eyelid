@@ -94,6 +94,29 @@ struct NotchViewModelTests {
         #expect(NotchViewModel.Layout.trackTitleInset + TrackTitle.fontSize < NotchViewModel.Layout.trackTitleHeight)
     }
 
+    @Test func soundTabHasItsOwnHeight() {
+        let model = makeModel()
+        model.state = .open
+
+        model.tab = .sound
+
+        #expect(model.showsSound)
+        // Before the outputs are read, as tall as the other tabs.
+        #expect(model.bodySize.height == 32 + model.soundContentHeight)
+        #expect(model.soundContentHeight >= NotchViewModel.Layout.openContentHeight)
+        #expect(model.soundContentHeight <= NotchViewModel.Layout.soundContentHeight)
+        #expect(model.windowSize.height >= model.bodySize.height)
+    }
+
+    @Test func equalizerIsClickableOnlyWhileItShows() {
+        let model = makeModel()
+        #expect(model.equalizerRect == nil)
+
+        model.settings.isLiveActivityHidden = false
+        model.state = .open
+        #expect(model.equalizerRect == nil)
+    }
+
     @Test func statusFitsRightOfTheCamera() {
         let model = makeModel()
 

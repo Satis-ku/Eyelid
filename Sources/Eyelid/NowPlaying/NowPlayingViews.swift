@@ -36,6 +36,8 @@ struct ClosedActivityView: View {
     let track: NowPlayingTrack
     let notchSize: CGSize
     var levels: [Double]? = nil
+    /// A click on the equalizer opens the Sound tab.
+    var openSound: @MainActor () -> Void = {}
 
     var body: some View {
         let sideWidth = NotchViewModel.Layout.activitySideWidth
@@ -45,8 +47,13 @@ struct ClosedActivityView: View {
                 .frame(width: sideWidth)
             Spacer()
                 .frame(width: notchSize.width)
-            EqualizerView(isPlaying: track.isPlaying, levels: levels)
-                .frame(width: sideWidth)
+            Button(action: openSound) {
+                EqualizerView(isPlaying: track.isPlaying, levels: levels)
+                    .frame(width: sideWidth, height: notchSize.height)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PressableButtonStyle())
+            .accessibilityLabel("Sound")
         }
         .frame(height: notchSize.height)
     }

@@ -14,6 +14,7 @@ final class NotchViewModel {
         case nowPlaying
         case shelf
         case clipboard
+        case sound
     }
 
     enum Layout {
@@ -24,6 +25,11 @@ final class NotchViewModel {
         static let openContentHeight: CGFloat = 108
         /// The clipboard history needs room for a list, so the notch grows taller for it.
         static let clipboardContentHeight: CGFloat = 236
+        /// The Sound tab grows with the outputs, up to this height, then scrolls.
+        static let soundContentHeight: CGFloat = 196
+        /// The Sound tab's volume row and Sound Settings link, and the height of each output.
+        static let soundFixedHeight: CGFloat = 70
+        static let soundRowHeight: CGFloat = 26
         /// Extra room on each side of the closed notch for the live activity.
         static let activitySideWidth: CGFloat = 42
         /// Room on each side of the closed notch for the volume and brightness HUD.
@@ -86,6 +92,10 @@ final class NotchViewModel {
     let clipboard: ClipboardHistory
     let settings: AppSettings
     @ObservationIgnored let shelfDragSource = ShelfDragSource()
+    /// The volume and outputs, for the Sound tab.
+    let sound = SoundControl()
+    /// Opens the notch on the Sound tab. Set by the window controller, which owns opening.
+    @ObservationIgnored var openSound: @MainActor () -> Void = {}
     /// Set by the window controller, which owns opening and closing.
     @ObservationIgnored var close: @MainActor () -> Void = {}
     /// Presses ⌘V in the app in front. Set by the window controller, which knows when it has the keyboard back.
@@ -119,6 +129,17 @@ final class NotchViewModel {
 
     var showsClipboard: Bool {
         settings.clipboardEnabled && tab == .clipboard
+    }
+
+    var showsSound: Bool {
+        tab == .sound
+    }
+
+    /// As tall as the outputs need, within limits.
+    var soundContentHeight: CGFloat {
+        let rows = CGFloat(max(sound.devices.count, 1))
+        let needed = Layout.soundFixedHeight + rows * Layout.soundRowHeight
+        return min(max(needed, Layout.openContentHeight), Layout.soundContentHeight)
     }
 
     /// The clipboard entries that match what's been typed.
@@ -217,6 +238,19 @@ final class NotchViewModel {
         }
     }
 
+    /// The equalizer right of the closed notch, in global coordinates, while it shows. Hovering it doesn't open the
+    /// notch, and clicking it opens the Sound tab.
+    var equalizerRect: CGRect? {
+        guard state == .closed, showsNowPlayingActivity, hud == nil, output == nil, batteryEvent == nil else { return nil }
+        let notch = geometry.notchSize
+        return CGRect(
+            x: geometry.notchMidX + notch.width / 2,
+            y: geometry.screenFrame.maxY - notch.height,
+            width: Layout.activitySideWidth,
+            height: notch.height
+        )
+    }
+
     /// Room right of the camera in the open notch, for the date, time and battery.
     var statusWidth: CGFloat {
         (Layout.openWidth - geometry.notchSize.width) / 2 - Layout.openHorizontalPadding
@@ -227,7 +261,9 @@ final class NotchViewModel {
         let notch = geometry.notchSize
         switch state {
         case .open:
-            let contentHeight = showsClipboard ? Layout.clipboardContentHeight : Layout.openContentHeight
+            let contentHeight = showsClipboard
+                ? Layout.clipboardContentHeight
+                : (showsSound ? soundContentHeight : Layout.openContentHeight)
             return CGSize(width: Layout.openWidth, height: notch.height + contentHeight)
         case .closed:
             let sideWidth = hud != nil || output != nil
