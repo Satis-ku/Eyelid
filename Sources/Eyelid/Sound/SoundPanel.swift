@@ -43,7 +43,7 @@ struct SoundPanel: View {
                     }
                     if overflows {
                         MoreOutputsRow(count: sound.devices.count - (rows - 1)) {
-                            NSWorkspace.shared.open(Self.soundSettings)
+                            NSWorkspace.shared.open(SystemSettingsPage.sound)
                         }
                     }
                 }
@@ -66,7 +66,7 @@ struct SoundPanel: View {
             HStack {
                 Spacer()
                 Button("Sound Settings…") {
-                    NSWorkspace.shared.open(Self.soundSettings)
+                    NSWorkspace.shared.open(SystemSettingsPage.sound)
                 }
                 .buttonStyle(PressableButtonStyle(hoverScale: 1.05))
                 .font(.system(size: 11, weight: .medium))
@@ -134,8 +134,6 @@ struct SoundPanel: View {
     private var muteSymbol: String {
         HUDEvent(kind: .volume, level: level, isMuted: sound.volume.isMuted).symbolName
     }
-
-    private static let soundSettings = URL(string: "x-apple.systempreferences:com.apple.Sound-Settings.extension")!
 }
 
 /// The last row of outputs when there are more than fit: opens Sound Settings, which lists them all.

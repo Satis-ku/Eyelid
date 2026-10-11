@@ -129,30 +129,8 @@ private struct OpenNotchView: View {
             Group {
                 if model.showsSectionMenu {
                     SectionMenu(model: model)
-                } else if model.showsShelf {
-                    ShelfView(model: model)
-                } else if model.showsClipboard {
-                    ClipboardView(model: model)
-                } else if model.showsSound {
-                    SoundPanel(sound: model.sound, appVolumes: model.appVolumes, settings: model.settings)
-                } else if model.showsTranslation {
-                    TranslationPanel(
-                        translator: model.translator,
-                        isTyping: model.isTypingTranslation,
-                        translatesOnDoubleCopy: model.settings.translatesOnDoubleCopy,
-                        beginTyping: model.typeTranslation
-                    )
-                } else if let track = model.nowPlaying.track {
-                    NowPlayingCard(track: track, nowPlaying: model.nowPlaying)
                 } else {
-                    // As the shelf and the clipboard say they're empty.
-                    VStack(spacing: 6) {
-                        Image(systemName: "music.note")
-                            .font(.system(size: 20, weight: .medium))
-                        Text("Nothing is playing")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .foregroundStyle(.white.opacity(0.5))
+                    section
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -163,5 +141,37 @@ private struct OpenNotchView: View {
                 .frame(height: NotchViewModel.Layout.dockHeight)
         }
         .padding(.horizontal, NotchViewModel.Layout.openHorizontalPadding)
+    }
+
+    @ViewBuilder
+    private var section: some View {
+        switch model.currentSection {
+        case .shelf:
+            ShelfView(model: model)
+        case .clipboard:
+            ClipboardView(model: model)
+        case .sound:
+            SoundPanel(sound: model.sound, appVolumes: model.appVolumes, settings: model.settings)
+        case .translation:
+            TranslationPanel(
+                translator: model.translator,
+                isTyping: model.isTypingTranslation,
+                translatesOnDoubleCopy: model.settings.translatesOnDoubleCopy,
+                beginTyping: model.typeTranslation
+            )
+        case .nowPlaying:
+            if let track = model.nowPlaying.track {
+                NowPlayingCard(track: track, nowPlaying: model.nowPlaying)
+            } else {
+                // As the shelf and the clipboard say they're empty.
+                VStack(spacing: 6) {
+                    Image(systemName: "music.note")
+                        .font(.system(size: 20, weight: .medium))
+                    Text("Nothing is playing")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .foregroundStyle(.white.opacity(0.5))
+            }
+        }
     }
 }

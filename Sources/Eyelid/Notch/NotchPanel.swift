@@ -23,8 +23,9 @@ final class NotchPanel: NSPanel {
         ignoresMouseEvents = true
     }
 
-    /// True while the clipboard history is open, so it can take the keyboard. Being a non-activating panel,
-    /// it does so without activating Eyelid: the app in front stays in front and gets the keyboard back after.
+    /// True while the clipboard history or the translator holds the notch open, so it can take the keyboard. Being a
+    /// non-activating panel, it does so without activating Eyelid: the app in front stays in front and gets the
+    /// keyboard back after.
     var allowsKey = false
 
     override var canBecomeKey: Bool { allowsKey }
@@ -36,7 +37,7 @@ final class NotchPanel: NSPanel {
     }
 }
 
-/// Lets buttons react to the first click even though the panel never becomes key.
+/// Lets buttons react to the first click, though the panel is mostly not key.
 final class NotchHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

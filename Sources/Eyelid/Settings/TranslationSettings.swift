@@ -65,16 +65,7 @@ struct TranslationSettings: View {
             .disabled(!translator.isAvailable)
 
             if settings.translatesOnDoubleCopy, let access, access != .allowed {
-                Section {
-                    LabeledContent {
-                        Button("Open Privacy & Security") {
-                            NSWorkspace.shared.open(ClipboardSettings.pasteboardPrivacySettings)
-                        }
-                    } label: {
-                        Text("Allow Eyelid to read what you copy")
-                        Text("Otherwise macOS asks every time. Set Eyelid to Allow under Paste from Other Apps.")
-                    }
-                }
+                PasteAccessSection(explanation: "Otherwise macOS asks every time. Set Eyelid to Allow under Paste from Other Apps.")
             }
         }
         .formStyle(.grouped)

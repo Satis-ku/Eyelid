@@ -50,7 +50,7 @@ enum NotchDisplays: Hashable {
     /// The display with the pointer, so the notch follows the user from display to display.
     case automatic
     case all
-    /// One display, or the automatic choice while it isn't connected.
+    /// One display, or while it isn't connected, the display with a notch, or the main one.
     case display(CGDirectDisplayID)
 
     /// Picks from the displays connected now, the main display first, given the display with the pointer.

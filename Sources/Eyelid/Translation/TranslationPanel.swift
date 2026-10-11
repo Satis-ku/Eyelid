@@ -265,16 +265,12 @@ extension Translator.Failure {
     var settings: (title: String, url: URL)? {
         switch self {
         case .pasteDenied:
-            ("Open Privacy & Security", ClipboardSettings.pasteboardPrivacySettings)
+            ("Open Privacy & Security", SystemSettingsPage.pasteFromOtherApps)
         case .languagesNotInstalled:
-            ("Open Language & Region", TranslationLayout.languageSettings)
+            ("Open Language & Region", SystemSettingsPage.languageAndRegion)
         default:
             nil
         }
     }
 }
 
-extension TranslationLayout {
-    /// System Settings → General → Language & Region, where Translation Languages are downloaded.
-    static let languageSettings = URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension")!
-}

@@ -47,11 +47,6 @@ final class AppVolumes {
         let isRunning: Bool
     }
 
-    /// Whether this Mac can tap apps: macOS 14.2 and later.
-    static var isSupported: Bool {
-        if #available(macOS 14.2, *) { true } else { false }
-    }
-
     /// Volumes below full, by app. Apps at full volume aren't listed, and play as they do without Eyelid.
     private(set) var volumes: [String: Float]
     /// Equalizers that aren't flat, by app. An app with one plays through a tap, as one turned down does.
@@ -175,7 +170,7 @@ final class AppVolumes {
 
     /// Starts following the apps' processes and the output.
     func start() {
-        guard Self.isSupported else { return }
+        guard AudioProperty.canTapProcesses else { return }
         for selector in [kAudioHardwarePropertyProcessObjectList, kAudioHardwarePropertyDefaultOutputDevice] {
             let address = AudioProperty.address(selector)
             let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
@@ -302,7 +297,7 @@ final class AppVolumes {
 
     /// Hears each process start and stop sending sound, so a playing app gets its tap from its first sound.
     private func watchProcesses(_ processes: [AudioObjectID]) {
-        guard Self.isSupported else { return }
+        guard AudioProperty.canTapProcesses else { return }
         let address = AudioProperty.address(kAudioProcessPropertyIsRunningOutput)
         let current = Set(processes)
         for (process, listener) in processListeners where !current.contains(process) {

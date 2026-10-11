@@ -32,10 +32,6 @@ final class AudioLevels {
     /// Silence this long, while something plays, means Eyelid isn't allowed to hear it.
     static let silenceTimeout: Duration = .seconds(2)
 
-    static var isSupported: Bool {
-        if #available(macOS 14.2, *) { true } else { false }
-    }
-
     init(settings: AppSettings, nowPlaying: NowPlayingService) {
         self.settings = settings
         self.nowPlaying = nowPlaying

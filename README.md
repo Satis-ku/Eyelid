@@ -241,14 +241,17 @@ Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers 
 
 ```
 Sources/Eyelid/
-  App/          App entry point, menu bar item, app delegate
-  Notch/        Notch geometry, panel, shape, hover handling, root view
-  NowPlaying/   mediaremote-adapter client, now playing model, artwork, views
+  App/          App entry point, menu bar item, app delegate, keyboard shortcuts (Carbon hot keys)
+  Notch/        Notch geometry, panel, shape, hover handling, sections, root view
+  Audio/        Core Audio properties, output devices, system volume, device icons
+  NowPlaying/   mediaremote-adapter client, now playing model, artwork, equalizer listening, views
   Battery/      IOKit battery reading, battery events and views
-  HUD/          Media key tap, volume (CoreAudio), brightness (DisplayServices), device icons, HUD view
+  HUD/          Media key tap, brightness (DisplayServices), volume watching, HUD view
   Output/       Output switches, headphone charge and earbuds in use (IOKit accessory power sources), views
+  Sound/        Sound section: outputs, apps playing, per-app volume and equalizer (Core Audio process taps)
   Shelf/        File shelf: bookmarks, drops and file promises, dragging out, views
-  Clipboard/    Clipboard history, keyboard shortcuts (Carbon hot keys), pasting, views
+  Clipboard/    Clipboard history, pasting, views
+  Translation/  On-device translation (Apple's Translation), double copy, views
   Settings/     Preferences, Settings window, launch at login
 Tests/          Unit tests (Swift Testing) for the logic that needs no screen
 Resources/      Info.plist, AppIcon.icns

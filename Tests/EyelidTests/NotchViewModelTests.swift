@@ -272,15 +272,15 @@ final class NotchViewModelTests {
         #expect(!model.hoverRect.contains(belowTheNotch))
     }
 
-    @Test func shelfTabNeedsTheShelf() {
+    @Test func theShelfSectionNeedsTheShelf() {
         let model = makeModel()
-        #expect(model.tab == .nowPlaying)
+        #expect(model.selectedSection == .nowPlaying)
 
-        model.tab = .shelf
-        #expect(model.showsShelf)
+        model.selectedSection = .shelf
+        #expect(model.currentSection == .shelf)
 
         model.settings.shelfEnabled = false
-        #expect(!model.showsShelf)
+        #expect(model.currentSection == .nowPlaying)
     }
 
     @Test func filesDraggedOutTogetherAllLeaveTheShelf() throws {
@@ -318,12 +318,12 @@ final class NotchViewModelTests {
     @Test func clipboardHistoryShowsOnceItsOn() {
         let model = makeModel()
         model.state = .open
-        model.tab = .clipboard
-        #expect(!model.showsClipboard)
+        model.selectedSection = .clipboard
+        #expect(model.currentSection == .nowPlaying)
 
         model.settings.clipboardEnabled = true
 
-        #expect(model.showsClipboard)
+        #expect(model.currentSection == .clipboard)
     }
 
     @Test func clipboardSelectionStaysInTheList() throws {
@@ -436,7 +436,7 @@ final class NotchViewModelTests {
     @Test func sectionsThatAreOffAreLeftOut() {
         let model = makeModel()
         model.settings.shelfEnabled = false
-        model.tab = .shelf
+        model.selectedSection = .shelf
 
         #expect(model.sections == [.nowPlaying, .sound, .translation])
         #expect(model.currentSection == .nowPlaying)
@@ -446,25 +446,25 @@ final class NotchViewModelTests {
         let model = makeModel()
         model.state = .open
         model.settings.clipboardEnabled = true
-        model.tab = .clipboard
+        model.selectedSection = .clipboard
         model.showsSectionMenu = true
 
         model.select(.sound)
 
         #expect(!model.showsSectionMenu)
-        #expect(model.tab == .sound)
+        #expect(model.selectedSection == .sound)
     }
 
     @Test func typingNeedsTheKeyboardOnTheTranslator() {
         let model = makeModel()
         model.state = .open
-        model.tab = .translation
+        model.selectedSection = .translation
         #expect(!model.isTypingTranslation)
 
         model.isHeldOpen = true
         #expect(model.isTypingTranslation)
 
-        model.tab = .clipboard
+        model.selectedSection = .clipboard
         #expect(!model.isTypingTranslation)
     }
 
@@ -473,7 +473,7 @@ final class NotchViewModelTests {
     func sectionsWithoutTypingLetGoOfTheHold(section: NotchSection, releases: Bool) {
         let model = makeModel()
         model.state = .open
-        model.tab = .translation
+        model.selectedSection = .translation
         model.isHeldOpen = true
         var released = false
         model.releaseHold = { released = true }
@@ -485,7 +485,7 @@ final class NotchViewModelTests {
 
     @Test func withoutTheTranslatorTheresNoTranslationSection() {
         let model = makeModel(translation: nil)
-        model.tab = .translation
+        model.selectedSection = .translation
 
         #expect(!model.sections.contains(.translation))
         #expect(model.currentSection == .nowPlaying)

@@ -30,7 +30,7 @@ struct AudioAppRow: View {
             .help("Show \(app.name)")
             .accessibilityHint("Brings the app forward")
 
-            if AppVolumes.isSupported {
+            if AudioProperty.canTapProcesses {
                 VolumeSlider(
                     level: Binding(
                         get: { appVolumes.volume(for: app) },

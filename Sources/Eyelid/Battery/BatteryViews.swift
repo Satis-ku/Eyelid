@@ -1,14 +1,5 @@
 import SwiftUI
 
-/// Battery level and icon in the strip next to the hardware notch, while the notch is open.
-struct BatteryIndicator: View {
-    let state: BatteryState
-
-    var body: some View {
-        CompactBatteryIcon(state: state)
-    }
-}
-
 /// A battery with its level written inside, as on iOS: the digits are cut out of the fill, so they read at any
 /// charge. A bolt follows it while connected to power.
 struct CompactBatteryIcon: View {
@@ -82,7 +73,7 @@ struct OpenNotchStatus: View {
                     .padding(.trailing, 2)
             }
             if let battery {
-                BatteryIndicator(state: battery)
+                CompactBatteryIcon(state: battery)
             }
         }
         .font(.system(size: 11, weight: .medium).monospacedDigit())

@@ -23,7 +23,7 @@ struct SystemHUDSettings: View {
         if settings.replacesSystemHUD, !isTrusted {
             LabeledContent("Allow Eyelid in Accessibility to finish.") {
                 Button("Open Accessibility") {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                    NSWorkspace.shared.open(SystemSettingsPage.accessibility)
                 }
             }
             .foregroundStyle(.secondary)
@@ -47,7 +47,7 @@ struct SystemHUDSettings: View {
 }
 
 /// An icon picker for every output device, so devices macOS can't tell apart get the right one.
-/// The tab that shows it keeps `devices` up to date.
+/// The page that shows it keeps `devices` up to date.
 struct OutputDeviceIconSettings: View {
     @Bindable var settings: AppSettings
     let devices: [OutputDevice]

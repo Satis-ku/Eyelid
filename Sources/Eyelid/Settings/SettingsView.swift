@@ -177,11 +177,11 @@ private struct NowPlayingSettings: View {
 
                 Toggle(isOn: $settings.equalizerFollowsAudio) {
                     Text("Equalizer follows the sound")
-                    Text(AudioLevels.isSupported
+                    Text(AudioProperty.canTapProcesses
                         ? "macOS asks to allow Eyelid to record system audio, and shows the recording indicator while it listens. Eyelid only measures how loud each pitch is, and keeps nothing."
                         : "Needs macOS 14.2 or later.")
                 }
-                .disabled(!AudioLevels.isSupported || !settings.showsLiveActivity)
+                .disabled(!AudioProperty.canTapProcesses || !settings.showsLiveActivity)
 
                 Toggle(isOn: $settings.showsTrackTitle) {
                     Text("Track title")

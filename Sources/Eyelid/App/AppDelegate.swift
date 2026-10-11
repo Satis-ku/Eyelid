@@ -105,7 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func followEqualizerSetting() {
         withObservationTracking {
             appVolumes.setRoutesPlayingApps(
-                settings.equalizerFollowsAudio && AudioLevels.isSupported && audioLevels.isEqualizerVisible,
+                settings.equalizerFollowsAudio && AudioProperty.canTapProcesses && audioLevels.isEqualizerVisible,
                 // Nobody sees the recording indicator while the displays sleep, and music often plays on.
                 whenQuiet: audioLevels.isDisplayAsleep
             )
