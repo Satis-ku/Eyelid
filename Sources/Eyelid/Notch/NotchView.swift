@@ -77,6 +77,9 @@ struct NotchView: View {
         } else if model.showsNowPlayingActivity, let track = model.nowPlaying.track {
             ClosedActivityView(track: track, notchSize: model.geometry.notchSize, levels: model.audioLevels.levels)
                 .transition(.opacity)
+        } else if model.showsIdleActivity {
+            IdleActivityView(battery: model.battery.state, notchSize: model.geometry.notchSize)
+                .transition(.opacity)
         }
     }
 }
@@ -98,9 +101,8 @@ private struct OpenNotchView: View {
                             NotchTabs(model: model)
                         }
                         Spacer()
-                        if let battery = model.battery.state {
-                            BatteryIndicator(state: battery)
-                        }
+                        OpenNotchStatus(battery: model.battery.state, showsDate: model.settings.showsDateInOpenNotch)
+                            .frame(maxWidth: model.statusWidth, alignment: .trailing)
                     }
                     .transition(.opacity)
                 }
@@ -123,7 +125,7 @@ private struct OpenNotchView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, NotchViewModel.Layout.openHorizontalPadding)
         .padding(.bottom, 14)
     }
 }

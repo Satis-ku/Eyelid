@@ -5,12 +5,117 @@ struct BatteryIndicator: View {
     let state: BatteryState
 
     var body: some View {
-        HStack(spacing: 5) {
-            Text("\(state.level)%")
-                .font(.system(size: 11, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.7))
-            BatteryIcon(level: state.level, isPluggedIn: state.isPluggedIn, tint: state.tint)
+        CompactBatteryIcon(state: state)
+    }
+}
+
+/// A battery with its level written inside, as on iOS: the digits are cut out of the fill, so they read at any
+/// charge. A bolt follows it while connected to power.
+struct CompactBatteryIcon: View {
+    let state: BatteryState
+
+    var body: some View {
+        HStack(spacing: 2) {
+            HStack(spacing: 1) {
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(.white.opacity(0.35))
+                    Rectangle()
+                        .fill(state.tint)
+                        .frame(width: 27 * CGFloat(min(max(state.level, 0), 100)) / 100)
+                    Text("\(state.level)")
+                        .font(.system(size: 10, weight: .bold, design: .rounded).monospacedDigit())
+                        .frame(maxWidth: .infinity)
+                        .blendMode(.destinationOut)
+                }
+                .frame(width: 27, height: 13)
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(.white.opacity(0.35))
+                    .frame(width: 1.5, height: 4.5)
+            }
+            .compositingGroup()
+
+            if state.isPluggedIn {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundStyle(state.tint)
+            }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Battery \(state.level)%\(state.isPluggedIn ? ", connected to power" : "")")
+    }
+}
+
+/// The date, time and battery right of the camera while the notch is open. Only as much as fits in the room there
+/// shows: without the weekday, then without the date, so nothing goes under the camera.
+struct OpenNotchStatus: View {
+    let battery: BatteryState?
+    let showsDate: Bool
+
+    var body: some View {
+        TimelineView(.everyMinute) { context in
+            ViewThatFits(in: .horizontal) {
+                if showsDate {
+                    status(date: .dateTime.weekday(.abbreviated).day().month(.abbreviated), at: context.date)
+                    status(date: .dateTime.day().month(.abbreviated), at: context.date)
+                    status(date: nil, at: context.date)
+                }
+                status(date: nil, at: nil)
+            }
+        }
+    }
+
+    private func status(date: Date.FormatStyle?, at now: Date?) -> some View {
+        HStack(spacing: 6) {
+            if let now {
+                if let date {
+                    Text(now, format: date)
+                        .foregroundStyle(.white.opacity(0.55))
+                }
+                Text(now, format: .dateTime.hour().minute())
+                    .foregroundStyle(.white.opacity(0.85))
+                    .padding(.trailing, 2)
+            }
+            if let battery {
+                BatteryIndicator(state: battery)
+            }
+        }
+        .font(.system(size: 11, weight: .medium).monospacedDigit())
+        .lineLimit(1)
+        .fixedSize()
+    }
+}
+
+/// The time, and the battery, beside the closed notch while nothing plays, if that's turned on.
+struct IdleActivityView: View {
+    let battery: BatteryState?
+    let notchSize: CGSize
+
+    var body: some View {
+        let sideWidth = NotchViewModel.Layout.activitySideWidth
+
+        HStack(spacing: 0) {
+            Group {
+                if let battery {
+                    CompactBatteryIcon(state: battery)
+                        .scaleEffect(0.85)
+                }
+            }
+            .frame(width: sideWidth)
+            Spacer()
+                .frame(width: notchSize.width)
+            TimelineView(.everyMinute) { context in
+                Text(context.date, format: .dateTime.hour().minute())
+                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.9))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(width: sideWidth)
+        }
+        .frame(height: notchSize.height)
     }
 }
 

@@ -17,7 +17,9 @@ final class NotchViewModel {
     }
 
     enum Layout {
-        static let openWidth: CGFloat = 440
+        static let openWidth: CGFloat = 470
+        /// Room between the open notch's content and its sides.
+        static let openHorizontalPadding: CGFloat = 18
         /// Height of the open notch below the hardware notch strip.
         static let openContentHeight: CGFloat = 108
         /// The clipboard history needs room for a list, so the notch grows taller for it.
@@ -182,7 +184,13 @@ final class NotchViewModel {
 
     /// Whether the closed notch grows sideways to show the HUD, a battery event, or artwork and an equalizer.
     var showsActivity: Bool {
-        hud != nil || output != nil || batteryEvent != nil || showsNowPlayingActivity
+        hud != nil || output != nil || batteryEvent != nil || showsNowPlayingActivity || showsIdleActivity
+    }
+
+    /// The time and the battery beside the closed notch while nothing plays, if that's turned on.
+    var showsIdleActivity: Bool {
+        settings.showsClockWhenIdle && !settings.isLiveActivityHidden && !showsNowPlayingActivity
+            && hud == nil && output == nil && batteryEvent == nil
     }
 
     var showsNowPlayingActivity: Bool {
@@ -207,6 +215,11 @@ final class NotchViewModel {
         if trackTitle?.id == id {
             trackTitle = nil
         }
+    }
+
+    /// Room right of the camera in the open notch, for the date, time and battery.
+    var statusWidth: CGFloat {
+        (Layout.openWidth - geometry.notchSize.width) / 2 - Layout.openHorizontalPadding
     }
 
     /// Size of the notch body, excluding the ears.
