@@ -436,4 +436,19 @@ struct NotchViewModelTests {
         model.tab = .clipboard
         #expect(!model.isTypingTranslation)
     }
+
+    /// Only the clipboard history and the translator take typing; the other sections let go of the keyboard.
+    @Test(arguments: [(NotchSection.shelf, true), (.sound, true), (.nowPlaying, true), (.translation, false), (.clipboard, false)])
+    func sectionsWithoutTypingLetGoOfTheHold(section: NotchSection, releases: Bool) {
+        let model = makeModel()
+        model.state = .open
+        model.tab = .translation
+        model.isHeldOpen = true
+        var released = false
+        model.releaseHold = { released = true }
+
+        model.select(section)
+
+        #expect(released == releases)
+    }
 }

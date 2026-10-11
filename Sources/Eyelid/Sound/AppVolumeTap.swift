@@ -52,6 +52,8 @@ final class AppVolumeTap: @unchecked Sendable {
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var procID: AudioDeviceIOProcID?
+    /// Hears the output's sample rate change, as AirPods' does for a call.
+    private var rateListener: AudioObjectPropertyListenerBlock?
 
     /// Takes the app's sound and, if `isRunning`, starts playing it at `gain`, through `equalizer`. Returns nil if
     /// Core Audio refuses.
@@ -173,6 +175,7 @@ final class AppVolumeTap: @unchecked Sendable {
             of: aggregateID
         ) ?? 48_000
         equalizer = EqualizerFilter(sampleRate: sampleRate, gains: equalizerSettings.gains)
+        followSampleRate()
 
         // No dispatch queue: the block runs on Core Audio's real-time IO thread, as playback must. Through a queue the
         // output came late whenever the main thread was busy, such as redrawing the slider, and the sound stuttered.
@@ -217,7 +220,29 @@ final class AppVolumeTap: @unchecked Sendable {
         }
     }
 
+    /// Keeps the equalizer's bands where they are when the output's sample rate changes.
+    private func followSampleRate() {
+        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            guard let self, aggregateID != kAudioObjectUnknown else { return }
+            let rate: Float64 = AudioProperty.value(
+                AudioProperty.address(kAudioDevicePropertyNominalSampleRate),
+                of: aggregateID
+            ) ?? sampleRate
+            sampleRate = rate
+            equalizer?.setSampleRate(rate)
+        }
+        var address = AudioProperty.address(kAudioDevicePropertyNominalSampleRate)
+        if AudioObjectAddPropertyListenerBlock(aggregateID, &address, .main, listener) == noErr {
+            rateListener = listener
+        }
+    }
+
     func stop() {
+        if let rateListener, aggregateID != kAudioObjectUnknown {
+            var address = AudioProperty.address(kAudioDevicePropertyNominalSampleRate)
+            AudioObjectRemovePropertyListenerBlock(aggregateID, &address, .main, rateListener)
+        }
+        rateListener = nil
         if aggregateID != kAudioObjectUnknown {
             if let procID {
                 if isRunning {

@@ -62,6 +62,9 @@ final class NotchWindowController {
         model.close = { [weak self] in
             self?.close()
         }
+        model.releaseHold = { [weak self] in
+            self?.releaseHold()
+        }
         model.pasteIntoFrontApp = {
             Paster.paste()
         }
@@ -287,7 +290,7 @@ final class NotchWindowController {
         case .leftMouseDown:
             dragPasteboardChangeCount = NSPasteboard(name: .drag).changeCount
             // A click anywhere else puts away the clipboard history, as with a menu, and a translation.
-            if model.isHeldOpen || model.isTranslationHeld, !model.bodyRect.contains(NSEvent.mouseLocation) {
+            if model.isHeldOpen || model.isTranslationHeld, !model.bodyRect.containsPointer(NSEvent.mouseLocation) {
                 close()
             }
         case .leftMouseDragged:
@@ -317,7 +320,7 @@ final class NotchWindowController {
 
         let pointer = NSEvent.mouseLocation
         // The equalizer takes clicks, for the Sound tab, rather than opening the notch on hover.
-        let isOverEqualizer = model.equalizerRect?.contains(pointer) == true
+        let isOverEqualizer = model.equalizerRect?.containsPointer(pointer) == true
         // On every mouse move, so set only when it changes: each set goes to the window server.
         if model.state == .closed, panel.ignoresMouseEvents == isOverEqualizer {
             panel.ignoresMouseEvents = !isOverEqualizer
@@ -328,7 +331,7 @@ final class NotchWindowController {
                 NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
             }
         }
-        let isInside = model.hoverRect.contains(pointer) && !isOverEqualizer
+        let isInside = model.hoverRect.containsPointer(pointer) && !isOverEqualizer
         switch (model.state, isInside) {
         case (.closed, true):
             scheduleOpen()
@@ -403,14 +406,16 @@ final class NotchWindowController {
 
     private func close() {
         logger.debug("Closed")
-        let wasPinned = model.isHeldOpen
+        let wasHeld = model.isHeldOpen
         model.state = .closed
         model.showsSectionMenu = false
         model.isDropTargeted = false
         model.isHeldOpen = false
-        if wasPinned {
+        if wasHeld {
             giveUpKeyboard()
         }
+        // A search or a preview would greet the next hover, with no keyboard to clear it.
+        model.resetClipboard()
         model.isTranslationHeld = false
         translationTask?.cancel()
         translationTask = nil
@@ -467,6 +472,14 @@ extension NotchWindowController {
             }
             return isHandled ? nil : event
         }
+    }
+
+    /// Lets the notch follow the pointer again, and the keyboard go back to the app in front, for a section that
+    /// takes no typing.
+    private func releaseHold() {
+        guard model.isHeldOpen else { return }
+        model.isHeldOpen = false
+        giveUpKeyboard()
     }
 
     private func giveUpKeyboard() {

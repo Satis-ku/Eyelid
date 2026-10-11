@@ -63,19 +63,22 @@ final class AppVolumes {
     /// Whether every app playing goes through a tap, at full volume unless turned down. On while the equalizer
     /// follows the sound, since macOS shows the recording indicator then anyway. A tap stays `quietGrace` after its
     /// app goes quiet, so a pause doesn't switch, and then goes, so the output can sleep.
-    @ObservationIgnored var routesPlayingApps = false {
-        didSet {
-            guard routesPlayingApps != oldValue else { return }
-            if !routesPlayingApps {
-                // Turned off, such as by hiding the live activity, to stop listening: the taps go now, not once
-                // their apps are quiet, but for apps with settings of their own.
-                for (key, tap) in taps where !hasOwnSettings(key) {
-                    tap.stop()
-                    taps[key] = nil
-                }
+    @ObservationIgnored private(set) var routesPlayingApps = false
+
+    /// Starts or stops routing every app playing. Stopping, such as by hiding the live activity, is to stop
+    /// listening, so the taps go at once, but for apps with settings of their own. Unless `whenQuiet`, as while the
+    /// displays sleep and nobody sees the recording indicator: then each goes once its app is quiet, so the sound
+    /// doesn't switch paths while it plays.
+    func setRoutesPlayingApps(_ isOn: Bool, whenQuiet: Bool = false) {
+        guard isOn != routesPlayingApps else { return }
+        routesPlayingApps = isOn
+        if !isOn, !whenQuiet {
+            for (key, tap) in taps where !hasOwnSettings(key) {
+                tap.stop()
+                taps[key] = nil
             }
-            sync()
         }
+        sync()
     }
 
     @ObservationIgnored private let defaults: any SettingsStore
@@ -199,7 +202,7 @@ final class AppVolumes {
             scheduleCheck(at: now)
             return
         }
-        let current = apps()
+        let current = Self.oneForEachKey(apps())
         var wanted: [String: AudioApp] = [:]
         var kept: [String: AudioApp] = [:]
         var playing: [String: ContinuousClock.Instant] = [:]
@@ -250,6 +253,24 @@ final class AppVolumes {
 
         watchProcesses(current.flatMap(\.processes))
         scheduleCheck(at: now)
+    }
+
+    /// Apps by what their settings are kept by: two copies of an app running share one tap, with both's processes.
+    private static func oneForEachKey(_ apps: [AudioApp]) -> [AudioApp] {
+        var merged: [String: AudioApp] = [:]
+        var order: [String] = []
+        for app in apps {
+            let key = app.volumeKey
+            if var known = merged[key] {
+                known.processes += app.processes
+                known.isPlaying = known.isPlaying || app.isPlaying
+                merged[key] = known
+            } else {
+                merged[key] = app
+                order.append(key)
+            }
+        }
+        return order.compactMap { merged[$0] }
     }
 
     /// Whether there's anything to do: apps with settings of their own, or every app playing to route.

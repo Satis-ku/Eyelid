@@ -374,4 +374,37 @@ struct TranslatorTests {
         #expect(await calls.texts.count == 1)
         #expect(translator.request?.translation == "Good morning, how are you today?")
     }
+
+    /// The panel asks to try again after a failure, so asking again for the same text does.
+    @Test func aFailedTranslationIsTriedAgain() async {
+        struct Broken: Error {}
+        let calls = Calls()
+        let translator = makeTranslator(engine: .fake { text, _, _ in
+            await calls.add(text)
+            if await calls.texts.count == 1 {
+                throw Broken()
+            }
+            return text
+        })
+        translator.translate("Good morning, how are you today?")
+        await translator.task?.value
+        #expect(translator.request?.outcome == .failed(.failed))
+
+        translator.translateNow()
+        await translator.task?.value
+
+        #expect(translator.request?.translation == "Good morning, how are you today?")
+    }
+
+    @Test func aNewLanguageTranslatesAgain() async {
+        let translator = makeTranslator()
+        translator.translate("Good morning, how are you today?")
+        await translator.task?.value
+
+        settings.translationTarget = Locale.Language(identifier: "de").maximalIdentifier
+        translator.translateNow()
+        await translator.task?.value
+
+        #expect(translator.request?.translation == "de: Good morning, how are you today?")
+    }
 }

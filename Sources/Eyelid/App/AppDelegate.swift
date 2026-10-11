@@ -104,8 +104,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// can't be seen, such as with the live activity hidden: then Eyelid listens to nothing it doesn't have to.
     private func followEqualizerSetting() {
         withObservationTracking {
-            appVolumes.routesPlayingApps = settings.equalizerFollowsAudio && AudioLevels.isSupported
-                && audioLevels.isEqualizerVisible
+            appVolumes.setRoutesPlayingApps(
+                settings.equalizerFollowsAudio && AudioLevels.isSupported && audioLevels.isEqualizerVisible,
+                // Nobody sees the recording indicator while the displays sleep, and music often plays on.
+                whenQuiet: audioLevels.isDisplayAsleep
+            )
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.followEqualizerSetting()

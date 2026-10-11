@@ -86,12 +86,20 @@ enum NotchDisplays: Hashable {
     }
 }
 
+extension CGRect {
+    /// Whether the pointer is in it, as macOS counts it: on the top edge too, where the pointer rests when it's pushed
+    /// against the top of a display, which `contains` leaves out.
+    func containsPointer(_ point: CGPoint) -> Bool {
+        NSMouseInRect(point, self, false)
+    }
+}
+
 extension NSScreen {
     /// The screen the pointer is on.
     @MainActor
     static var withPointer: NSScreen? {
         let pointer = NSEvent.mouseLocation
-        return screens.first { NSMouseInRect(pointer, $0.frame, false) }
+        return screens.first { $0.frame.containsPointer(pointer) }
     }
 
     var displayID: CGDirectDisplayID? {

@@ -25,6 +25,21 @@ struct EqualizerSettings: Codable, Equatable, Sendable {
         self.init(gains: preset.gains, preset: preset)
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case gains
+        case preset
+    }
+
+    /// Reads what an earlier or later build stored as well as it can: a band each, within the range, and no preset
+    /// for one this build doesn't know.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let stored = (try? container.decode([Float].self, forKey: .gains)) ?? []
+        let gains = (0..<Self.bands.count).map { stored.indices.contains($0) ? stored[$0] : 0 }
+        let preset = try? container.decodeIfPresent(EqualizerPreset.self, forKey: .preset)
+        self.init(gains: gains, preset: gains == preset?.gains ? preset : nil)
+    }
+
     var isFlat: Bool {
         gains.allSatisfy { $0 == 0 }
     }
@@ -119,7 +134,9 @@ final class EqualizerFilter: @unchecked Sendable {
     /// The most frames a buffer has. Core Audio's buffers are far shorter.
     static let maxFrames = 8_192
 
-    private let sampleRate: Double
+    /// Only touched on the main thread, to work out coefficients.
+    private var sampleRate: Double
+    private var gains: [Float]
     private let sections = vDSP_Length(EqualizerSettings.bands.count)
     private let setup: vDSP_biquad_Setup
     /// Each channel's filter state: 2 values a section and 2 more.
@@ -140,6 +157,7 @@ final class EqualizerFilter: @unchecked Sendable {
 
     init?(sampleRate: Double, gains: [Float]) {
         self.sampleRate = sampleRate
+        self.gains = gains
         let initial = Biquad.equalizer(gains, sampleRate: sampleRate)
         let count = vDSP_Length(EqualizerSettings.bands.count)
         guard let setup = initial.withUnsafeBufferPointer({ vDSP_biquad_CreateSetup($0.baseAddress!, count) }) else {
@@ -169,6 +187,7 @@ final class EqualizerFilter: @unchecked Sendable {
 
     /// Takes new gains, from the main thread.
     func setGains(_ gains: [Float]) {
+        self.gains = gains
         let new = Pending(
             coefficients: Biquad.equalizer(gains, sampleRate: sampleRate),
             isActive: !gains.allSatisfy { $0 == 0 },
@@ -176,6 +195,13 @@ final class EqualizerFilter: @unchecked Sendable {
         )
         // The array this replaces is released here, on the main thread.
         pending.withLock { $0 = new }
+    }
+
+    /// Works the bands out again for the output's new sample rate, from the main thread, so they stay where they are.
+    func setSampleRate(_ rate: Double) {
+        guard rate != sampleRate, rate > 0 else { return }
+        sampleRate = rate
+        setGains(gains)
     }
 
     /// Takes up new gains, if any came, before a buffer. On the IO thread; if the main thread holds the lock, the gains

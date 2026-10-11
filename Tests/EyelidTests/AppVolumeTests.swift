@@ -246,7 +246,7 @@ struct AppVolumesTests {
         let volumes = makeVolumes()
         world.apps = [app("Music", processes: [10], isPlaying: true), app("Chat", processes: [20])]
 
-        volumes.routesPlayingApps = true
+        volumes.setRoutesPlayingApps(true)
 
         #expect(world.made.count == 1)
         let tap = try #require(world.made.first)
@@ -258,7 +258,7 @@ struct AppVolumesTests {
     @Test func whileRoutingAVolumeChangeOnlyChangesTheGain() throws {
         let volumes = makeVolumes()
         world.apps = [app("Music", processes: [10], isPlaying: true)]
-        volumes.routesPlayingApps = true
+        volumes.setRoutesPlayingApps(true)
         let tap = try #require(world.made.first)
 
         volumes.setVolume(0.3, for: world.apps[0])
@@ -274,7 +274,7 @@ struct AppVolumesTests {
     @Test func whileRoutingAQuietAppKeepsItsTapForAWhile() throws {
         let volumes = makeVolumes()
         world.apps = [app("Music", processes: [10], isPlaying: true)]
-        volumes.routesPlayingApps = true
+        volumes.setRoutesPlayingApps(true)
         let tap = try #require(world.made.first)
 
         world.apps = [app("Music", processes: [10], isPlaying: false)]
@@ -291,23 +291,50 @@ struct AppVolumesTests {
     @Test func turningRoutingOffStopsTapsAtOnceEvenWhilePlaying() throws {
         let volumes = makeVolumes()
         world.apps = [app("Music", processes: [10], isPlaying: true)]
-        volumes.routesPlayingApps = true
+        volumes.setRoutesPlayingApps(true)
         let tap = try #require(world.made.first)
 
-        volumes.routesPlayingApps = false
+        volumes.setRoutesPlayingApps(false)
 
         #expect(tap.isStopped)
         #expect(volumes.taps.isEmpty)
     }
 
+    /// While the displays sleep, music playing on keeps its path until it's quiet.
+    @Test func routingOffWhenQuietLetsAPlayingAppKeepItsTap() throws {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10], isPlaying: true)]
+        volumes.setRoutesPlayingApps(true)
+        let tap = try #require(world.made.first)
+
+        volumes.setRoutesPlayingApps(false, whenQuiet: true)
+        #expect(!tap.isStopped)
+
+        world.apps = [app("Music", processes: [10])]
+        volumes.sync()
+        #expect(tap.isStopped)
+    }
+
+    /// Two copies of an app running share its settings, and so its tap.
+    @Test func twoCopiesOfAnAppShareATap() throws {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10]), app("Music", processes: [20], isPlaying: true)]
+
+        volumes.setVolume(0.5, for: world.apps[0])
+
+        try #require(world.made.count == 1)
+        #expect(world.made[0].processes == [10, 20])
+        #expect(world.made[0].isRunning)
+    }
+
     @Test func turningRoutingOffLeavesOnlyAppsTurnedDown() {
         let volumes = makeVolumes()
         world.apps = [app("Music", processes: [10], isPlaying: true), app("Video", processes: [20], isPlaying: true)]
-        volumes.routesPlayingApps = true
+        volumes.setRoutesPlayingApps(true)
         volumes.setVolume(0.5, for: world.apps[1])
         world.apps = [app("Music", processes: [10]), app("Video", processes: [20])]
 
-        volumes.routesPlayingApps = false
+        volumes.setRoutesPlayingApps(false)
 
         #expect(world.made.filter { !$0.isStopped }.map(\.processes) == [[20]])
     }

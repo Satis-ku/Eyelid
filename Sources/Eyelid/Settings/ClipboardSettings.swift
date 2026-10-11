@@ -20,8 +20,8 @@ struct ClipboardSettings: View {
                     HotKeyRecorder(hotKey: $settings.clipboardHotKey, shortcut: shortcut)
                 } label: {
                     Text("Shortcut")
-                    if shortcut.isTaken {
-                        Text("Another app already uses this shortcut. Choose a different one.")
+                    if let problem = shortcut.problem {
+                        Text(problem)
                             .foregroundStyle(.red)
                     }
                 }

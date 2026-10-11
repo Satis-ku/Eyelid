@@ -66,6 +66,8 @@ final class Translator {
         var outcome: Outcome
         /// The translation of the text before, shown until this one's comes, so typing doesn't make it blink.
         var previous: String? = nil
+        /// The language chosen in Settings when this was asked for, if any.
+        var chosenTarget: String? = nil
 
         var translation: String? {
             if case .translated(let translation) = outcome { translation } else { nil }
@@ -183,15 +185,16 @@ final class Translator {
         translateInput(after: typingPause)
     }
 
-    /// Translates the input now, or after `delay` unless it changes again first. What's on its way or shown
-    /// already isn't translated again.
+    /// Translates the input now, or after `delay` unless it changes again first. What's on its way, or translated
+    /// already into the language chosen now, isn't translated again; what failed is tried again.
     private func translateInput(after delay: Duration?) {
         let text = String(input.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxLength))
         guard text != taskText else { return }
         task?.cancel()
         task = nil
         taskText = nil
-        if text == request?.text, request?.outcome != .translating {
+        if let request, request.text == text, request.translation != nil,
+           request.chosenTarget == settings.translationTarget {
             return
         }
         guard !text.isEmpty else {
@@ -214,6 +217,9 @@ final class Translator {
                 self?.begin(text)
             }
             await self?.run(text, with: engine)
+            guard !Task.isCancelled else { return }
+            // Done with it: asking again, as after a failure, starts over.
+            self?.taskText = nil
         }
     }
 
@@ -224,7 +230,8 @@ final class Translator {
             source: request?.source,
             target: request?.target,
             outcome: .translating,
-            previous: request?.translation ?? request?.previous
+            previous: request?.translation ?? request?.previous,
+            chosenTarget: settings.translationTarget
         )
     }
 

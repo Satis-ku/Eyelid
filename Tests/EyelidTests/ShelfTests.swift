@@ -25,8 +25,15 @@ final class ShelfTests {
         return url
     }
 
-    private func makeShelf(store: InMemorySettingsStore = InMemorySettingsStore()) -> Shelf {
-        Shelf(store: store, promisedFilesDirectory: folder.appending(path: "Promised", directoryHint: .isDirectory))
+    private func makeShelf(
+        store: InMemorySettingsStore = InMemorySettingsStore(),
+        isMounted: @escaping (URL) -> Bool = { _ in true }
+    ) -> Shelf {
+        Shelf(
+            store: store,
+            promisedFilesDirectory: folder.appending(path: "Promised", directoryHint: .isDirectory),
+            isMounted: isMounted
+        )
     }
 
     private func paths(_ shelf: Shelf) -> [String] {
@@ -90,6 +97,18 @@ final class ShelfTests {
 
         #expect(shelf.items.count == 1)
         #expect(makeShelf(store: store).items.count == 1)
+    }
+
+    /// A file on a disk that's unplugged can't be found, but isn't gone: it's there when the disk is back.
+    @Test func keepsAFileOnADiskThatIsntConnected() throws {
+        let store = InMemorySettingsStore()
+        let file = try makeFile("on-a-drive.txt")
+        makeShelf(store: store).add([file])
+        try FileManager.default.removeItem(at: file)
+
+        let shelf = makeShelf(store: store, isMounted: { _ in false })
+
+        #expect(shelf.items.count == 1)
     }
 
     @Test func keepsOnlyTheLatestFiles() throws {

@@ -37,6 +37,13 @@ struct VolumeSlider: View {
             )
             .animation(.easeOut(duration: 0.12), value: isDragging)
         }
+        .onDisappear {
+            // The notch can close mid-drag, which never ends the drag.
+            if isDragging {
+                isDragging = false
+                onEditingChanged(false)
+            }
+        }
         .frame(height: 18)
         .accessibilityElement()
         .accessibilityLabel(accessibilityLabel)

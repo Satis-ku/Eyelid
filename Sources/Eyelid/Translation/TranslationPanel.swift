@@ -10,6 +10,7 @@ struct TranslationPanel: View {
     let beginTyping: @MainActor () -> Void
     @State private var didCopy = false
     @State private var isFieldHovered = false
+    @State private var hasTextCursor = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: TranslationLayout.spacing) {
@@ -70,11 +71,11 @@ struct TranslationPanel: View {
         .onHover { isHovered in
             isFieldHovered = isHovered
             // A text cursor, as over any field, though the click lands on the overlay.
-            if isHovered {
-                NSCursor.iBeam.push()
-            } else {
-                NSCursor.pop()
-            }
+            setTextCursor(isHovered)
+        }
+        // The field can go while the pointer is on it, as the notch closes, which ends no hover.
+        .onDisappear {
+            setTextCursor(false)
         }
         .animation(.easeOut(duration: 0.15), value: isFieldHovered)
         .overlay {
@@ -84,6 +85,17 @@ struct TranslationPanel: View {
                     .contentShape(Rectangle())
                     .onTapGesture(perform: beginTyping)
             }
+        }
+    }
+
+    /// Pushes the text cursor once, and pops only what it pushed.
+    private func setTextCursor(_ isOn: Bool) {
+        guard isOn != hasTextCursor else { return }
+        hasTextCursor = isOn
+        if isOn {
+            NSCursor.iBeam.push()
+        } else {
+            NSCursor.pop()
         }
     }
 

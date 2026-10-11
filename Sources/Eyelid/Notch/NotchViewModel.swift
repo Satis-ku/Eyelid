@@ -118,6 +118,9 @@ final class NotchViewModel {
     @ObservationIgnored var typeTranslation: @MainActor () -> Void = {}
     /// Set by the window controller, which owns opening and closing.
     @ObservationIgnored var close: @MainActor () -> Void = {}
+    /// Gives the keyboard back to the app in front and lets the notch follow the pointer again. Set by the window
+    /// controller, which owns the keyboard.
+    @ObservationIgnored var releaseHold: @MainActor () -> Void = {}
     /// Presses ⌘V in the app in front. Set by the window controller, which knows when it has the keyboard back.
     @ObservationIgnored var pasteIntoFrontApp: @MainActor () -> Void = {}
 
@@ -186,10 +189,14 @@ final class NotchViewModel {
         sections.contains(tab) ? tab : .nowPlaying
     }
 
-    /// Shows a section, and puts the menu of all sections away.
+    /// Shows a section, and puts the menu of all sections away. Only the clipboard history and the translator take
+    /// typing, so the others let go of the keyboard and the hold.
     func select(_ section: NotchSection) {
         if section == .clipboard {
             resetClipboard()
+        }
+        if isHeldOpen, section != .clipboard, section != .translation {
+            releaseHold()
         }
         tab = section
         showsSectionMenu = false

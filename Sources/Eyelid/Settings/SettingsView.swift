@@ -122,6 +122,11 @@ private struct GeneralSettings: View {
                             Text(screen.localizedName).tag(NotchDisplays.display(id))
                         }
                     }
+                    if case .display(let id) = settings.notchDisplays,
+                       !NSScreen.screens.contains(where: { $0.displayID == id }) {
+                        // The chosen display is unplugged: the notch is on another one until it's back.
+                        Text("Display not connected").tag(settings.notchDisplays)
+                    }
                 } label: {
                     Text("Display")
                     Text("Automatic follows the pointer from display to display. Displays without a notch get one drawn at the top.")
@@ -194,8 +199,8 @@ private struct NowPlayingSettings: View {
                     HotKeyRecorder(hotKey: $settings.liveActivityHotKey, shortcut: shortcut)
                 } label: {
                     Text("Shortcut")
-                    if shortcut.isTaken {
-                        Text("Another app already uses this shortcut. Choose a different one.")
+                    if let problem = shortcut.problem {
+                        Text(problem)
                             .foregroundStyle(.red)
                     }
                 }

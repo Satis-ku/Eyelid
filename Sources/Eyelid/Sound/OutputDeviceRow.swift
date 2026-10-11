@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// One output in the Sound tab: its icon, name and headphone charge, with a check on the one in use.
+/// One output in the Sound section: its icon, name and headphone charge, with a check on the one in use.
 struct OutputDeviceRow: View {
     let device: OutputDevice
     let icon: DeviceIcon
+    let batteryLevel: Int?
     let isSelected: Bool
     let select: @MainActor () -> Void
     @State private var isHovered = false
@@ -22,7 +23,7 @@ struct OutputDeviceRow: View {
                     // A column is half the notch wide: names like "MacBook Pro Speakers" shrink a little first.
                     .minimumScaleFactor(0.8)
                 Spacer(minLength: 4)
-                if let level = HeadphonesBattery.current(for: device)?.level {
+                if let level = batteryLevel {
                     Text("\(level)%")
                         .font(.system(size: 10, weight: .medium).monospacedDigit())
                         .foregroundStyle(level <= 20 ? .red : .white.opacity(0.5))

@@ -4,12 +4,14 @@ import os
 
 private let logger = Logger(subsystem: "io.github.satis-ku.eyelid", category: "Sound")
 
-/// The volume and the outputs, for the Sound tab: read while the tab shows, and changed from it.
+/// The volume and the outputs, for the Sound section: read while it shows, and changed from it.
 @MainActor
 @Observable
 final class SoundControl {
     /// Every output that can play sound, the default one first.
     private(set) var devices: [OutputDevice] = []
+    /// The charge of headphones that report it, by output.
+    private(set) var batteryLevels: [String: Int] = [:]
     private(set) var defaultDeviceID: String?
     private(set) var volume = SystemVolume.State(level: 0, isMuted: false)
     /// False for outputs whose volume can't be set, as with many HDMI displays.
@@ -23,6 +25,9 @@ final class SoundControl {
     /// then, and app icons load only for apps new to the list.
     func refresh() {
         update(\.devices, to: OutputDevice.all())
+        update(\.batteryLevels, to: devices.reduce(into: [:]) { levels, device in
+            levels[device.id] = HeadphonesBattery.current(for: device)?.level
+        })
         let playing = AudioApps.all().filter(\.isPlaying)
         if playing != apps {
             apps = AudioApps.withIcons(playing, from: apps)
