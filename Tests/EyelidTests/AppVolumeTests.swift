@@ -146,12 +146,21 @@ struct AppVolumesTests {
                 let tap = FakeTap(request)
                 world.made.append(tap)
                 return tap
-            }
+            },
+            quietCheckInterval: .milliseconds(10)
         )
     }
 
-    private func app(_ name: String, processes: [AudioObjectID]) -> AudioApp {
-        AudioApp(id: 1, name: name, bundleIdentifier: "com.example.\(name)", bundleURL: nil, icon: nil, processes: processes)
+    private func app(_ name: String, processes: [AudioObjectID], isPlaying: Bool = false) -> AudioApp {
+        AudioApp(
+            id: 1,
+            name: name,
+            bundleIdentifier: "com.example.\(name)",
+            bundleURL: nil,
+            icon: nil,
+            processes: processes,
+            isPlaying: isPlaying
+        )
     }
 
     @Test func aQuieterAppPlaysThroughATap() throws {
@@ -166,6 +175,27 @@ struct AppVolumesTests {
         #expect(tap.outputUID == "speakers")
         #expect(tap.gain == 0.4)
         #expect(volumes.volume(for: music) == 0.4)
+    }
+
+    /// Switching paths leaves a gap, so a playing app back at full volume keeps its tap until it's quiet.
+    @Test func backAtFullVolumeTheTapLingersWhileTheAppPlays() async throws {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10], isPlaying: true)]
+        volumes.setVolume(0.4, for: world.apps[0])
+        let tap = try #require(world.made.first)
+
+        volumes.setVolume(1, for: world.apps[0])
+        volumes.sync()
+        #expect(!tap.isStopped)
+        #expect(tap.gain == 1)
+        #expect(volumes.hasLingeringTaps)
+
+        world.apps = [app("Music", processes: [10], isPlaying: false)]
+        await volumes.quietTask?.value
+
+        #expect(tap.isStopped)
+        #expect(volumes.taps.isEmpty)
+        #expect(volumes.quietTask == nil)
     }
 
     @Test func backAtFullVolumeTheTapGoesOnceLetGo() throws {

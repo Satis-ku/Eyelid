@@ -43,6 +43,10 @@ final class AppVolumes {
     @ObservationIgnored private let makeTap: @MainActor (Request) -> (any AppVolumeTapping)?
     @ObservationIgnored private(set) var taps: [String: any AppVolumeTapping] = [:]
     @ObservationIgnored private var listeners: [(AudioObjectPropertyAddress, AudioObjectPropertyListenerBlock)] = []
+    /// Looks again for apps gone quiet while a tap lingers.
+    @ObservationIgnored private(set) var quietTask: Task<Void, Never>?
+    /// How often, which tests shorten.
+    @ObservationIgnored let quietCheckInterval: Duration
 
     private static let key = "appVolumes"
 
@@ -50,9 +54,11 @@ final class AppVolumes {
         defaults: any SettingsStore = UserDefaults.standard,
         apps: @escaping @MainActor () -> [AudioApp] = AudioApps.all,
         output: @escaping @MainActor () -> (AudioDeviceID, String)? = AppVolumes.defaultOutput,
-        makeTap: @escaping @MainActor (Request) -> (any AppVolumeTapping)? = AppVolumes.systemTap
+        makeTap: @escaping @MainActor (Request) -> (any AppVolumeTapping)? = AppVolumes.systemTap,
+        quietCheckInterval: Duration = .seconds(1)
     ) {
         self.defaults = defaults
+        self.quietCheckInterval = quietCheckInterval
         self.apps = apps
         self.output = output
         self.makeTap = makeTap
@@ -65,7 +71,7 @@ final class AppVolumes {
     }
 
     /// Sets an app's volume. While the slider moves, the tap only changes its gain; `sync` then settles which apps
-    /// need one, so an app dragged back to full volume plays as it does without Eyelid.
+    /// need one: an app dragged back to full volume plays as it does without Eyelid once it's quiet.
     func setVolume(_ volume: Float, for app: AudioApp) {
         let volume = min(max(volume, 0), 1)
         let key = app.volumeKey
@@ -98,21 +104,28 @@ final class AppVolumes {
     }
 
     /// Plays every app with a volume of its own through a tap on the current output, and the others as they are.
+    ///
+    /// Switching an app between its own output and a tap leaves a gap of a few milliseconds, since the two paths have
+    /// different latencies. So an app turned back up to full volume keeps its tap, at full gain, while it plays, and
+    /// loses it once it's quiet, where the switch can't be heard.
     func sync() {
         guard let (device, uid) = output() else {
             stopAll()
             return
         }
         var wanted: [String: AudioApp] = [:]
+        var lingering: [String: AudioApp] = [:]
         for app in apps() where !app.processes.isEmpty {
             if volumes[app.volumeKey] != nil {
                 wanted[app.volumeKey] = app
+            } else if taps[app.volumeKey] != nil, app.isPlaying {
+                lingering[app.volumeKey] = app
             }
         }
 
         for (key, tap) in taps {
-            // A new output, or a helper that came or went, needs a new tap.
-            if let app = wanted[key], tap.outputUID == uid, tap.processes == app.processes {
+            // A new output, or a helper that came or went, needs a new tap, unless the app is back at full volume.
+            if let app = wanted[key] ?? lingering[key], tap.outputUID == uid, tap.processes == app.processes {
                 continue
             }
             tap.stop()
@@ -124,6 +137,30 @@ final class AppVolumes {
                 taps[key] = tap
                 logger.debug("Playing \(app.name, privacy: .public) at its own volume")
             }
+        }
+        waitForQuietIfNeeded()
+    }
+
+    /// Whether an app back at full volume still plays through its tap, which goes once the app is quiet.
+    var hasLingeringTaps: Bool {
+        taps.keys.contains { volumes[$0] == nil }
+    }
+
+    /// Core Audio says nothing when an app stops sending sound, so while a tap lingers, `sync` looks again every
+    /// second.
+    private func waitForQuietIfNeeded() {
+        guard hasLingeringTaps else {
+            quietTask?.cancel()
+            quietTask = nil
+            return
+        }
+        guard quietTask == nil else { return }
+        quietTask = Task { [weak self, quietCheckInterval] in
+            try? await Task.sleep(for: quietCheckInterval)
+            guard let self, !Task.isCancelled else { return }
+            quietTask = nil
+            // Looks again later on its own, while a tap still lingers.
+            sync()
         }
     }
 
