@@ -25,6 +25,8 @@ struct NotchView: View {
             .animation(animation, value: model.output == nil)
             .animation(animation, value: model.hud == nil)
             .animation(animation, value: model.isShowingTrackTitle)
+            // The notch grows as the translation comes in.
+            .animation(animation, value: model.translator.request?.outcome)
             // The next title replaces the last one in place, title and artist together.
             .animation(.easeInOut(duration: 0.25), value: model.trackTitle?.id)
             .environment(\.colorScheme, .dark)
@@ -122,6 +124,8 @@ private struct OpenNotchView: View {
                     ClipboardView(model: model)
                 } else if model.showsSound {
                     SoundPanel(sound: model.sound, settings: model.settings)
+                } else if model.showsTranslation {
+                    TranslationPanel(translator: model.translator)
                 } else if let track = model.nowPlaying.track {
                     NowPlayingCard(track: track, nowPlaying: model.nowPlaying)
                 } else {
@@ -133,11 +137,11 @@ private struct OpenNotchView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .padding(.horizontal, NotchViewModel.Layout.openHorizontalPadding)
-        .padding(.bottom, 14)
+        .padding(.bottom, NotchViewModel.Layout.openBottomPadding)
     }
 }
 
-/// Switches the open notch between now playing, the shelf and the clipboard history.
+/// Switches the open notch between now playing, the shelf, the clipboard history, sound and the latest translation.
 private struct NotchTabs: View {
     let model: NotchViewModel
 
@@ -163,6 +167,12 @@ private struct NotchTabs: View {
             }
             TabButton(title: "Sound", systemImage: "speaker.wave.2", isSelected: model.tab == .sound) {
                 model.tab = .sound
+            }
+            // Once something was translated, its translation stays a click away.
+            if model.translator.request != nil {
+                TabButton(title: "Translation", systemImage: "translate", isSelected: model.tab == .translation) {
+                    model.tab = .translation
+                }
             }
         }
     }

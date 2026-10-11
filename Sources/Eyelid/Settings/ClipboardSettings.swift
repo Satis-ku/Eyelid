@@ -79,6 +79,6 @@ struct ClipboardSettings: View {
     }
 
     /// Privacy & Security → Paste from Other Apps.
-    private static let pasteboardPrivacySettings =
+    nonisolated static let pasteboardPrivacySettings =
         URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Pasteboard")!
 }

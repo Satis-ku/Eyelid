@@ -18,6 +18,8 @@ final class NotchWindowController {
     private var hudTask: Task<Void, Never>?
     private var outputTask: Task<Void, Never>?
     private var trackTitleTask: Task<Void, Never>?
+    /// Closes a translation nobody looked at, once it has had time to be read.
+    private var translationTask: Task<Void, Never>?
     /// The drag pasteboard changes when a drag starts, which tells drags apart from other mouse moves.
     private var dragPasteboardChangeCount = NSPasteboard(name: .drag).changeCount
     /// Handles the arrow keys, Return, Delete and Escape while the clipboard history has the keyboard.
@@ -30,6 +32,7 @@ final class NotchWindowController {
         battery: BatteryService,
         shelf: Shelf,
         clipboard: ClipboardHistory,
+        translator: Translator,
         settings: AppSettings
     ) {
         self.settings = settings
@@ -40,6 +43,7 @@ final class NotchWindowController {
             battery: battery,
             shelf: shelf,
             clipboard: clipboard,
+            translator: translator,
             settings: settings
         )
 
@@ -89,7 +93,7 @@ final class NotchWindowController {
             NotificationCenter.default.removeObserver(observer)
         }
         observers = []
-        for task in [openTask, pollTask, batteryEventTask, hudTask, outputTask, trackTitleTask] {
+        for task in [openTask, pollTask, batteryEventTask, hudTask, outputTask, trackTitleTask, translationTask] {
             task?.cancel()
         }
         panel.orderOut(nil)
@@ -197,6 +201,26 @@ final class NotchWindowController {
         model.trackTitle = nil
     }
 
+    // MARK: - Translation
+
+    /// Opens the notch on the translation of what was just copied, wherever the pointer is. It stays open until the
+    /// pointer has been over it and left, or a click elsewhere, or for as long as it takes to read if neither comes.
+    func showTranslation() {
+        if model.isHeldOpen {
+            close()
+        }
+        open(on: .translation)
+        model.isTranslationHeld = true
+
+        let readingTime = NotchViewModel.Layout.translationReadingTime(for: model.translator.request?.text ?? "")
+        translationTask?.cancel()
+        translationTask = Task { [weak self] in
+            try? await Task.sleep(for: readingTime)
+            guard !Task.isCancelled, let self, model.isTranslationHeld else { return }
+            close()
+        }
+    }
+
     // MARK: - Sound
 
     /// Opens the notch on the Sound tab, after a click on the equalizer.
@@ -234,8 +258,8 @@ final class NotchWindowController {
         switch type {
         case .leftMouseDown:
             dragPasteboardChangeCount = NSPasteboard(name: .drag).changeCount
-            // A click anywhere else puts away the clipboard history, as with a menu.
-            if model.isHeldOpen, !model.bodyRect.contains(NSEvent.mouseLocation) {
+            // A click anywhere else puts away the clipboard history, as with a menu, and a translation.
+            if model.isHeldOpen || model.isTranslationHeld, !model.bodyRect.contains(NSEvent.mouseLocation) {
                 close()
             }
         case .leftMouseDragged:
@@ -283,11 +307,14 @@ final class NotchWindowController {
             openTask?.cancel()
             openTask = nil
         case (.open, false):
-            if !model.isHeldOpen {
+            if !model.isHeldOpen, !model.isTranslationHeld {
                 close()
             }
         case (.open, true):
-            break
+            // Once the pointer has been over a translation, it closes as the notch always does.
+            if model.isTranslationHeld {
+                model.isTranslationHeld = false
+            }
         }
     }
 
@@ -349,6 +376,9 @@ final class NotchWindowController {
         if wasPinned {
             giveUpKeyboard()
         }
+        model.isTranslationHeld = false
+        translationTask?.cancel()
+        translationTask = nil
         panel.ignoresMouseEvents = true
         pollTask?.cancel()
         pollTask = nil

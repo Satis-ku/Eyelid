@@ -15,12 +15,15 @@ final class NotchViewModel {
         case shelf
         case clipboard
         case sound
+        case translation
     }
 
     enum Layout {
         static let openWidth: CGFloat = 470
         /// Room between the open notch's content and its sides.
         static let openHorizontalPadding: CGFloat = 18
+        /// Room below the open notch's content.
+        static let openBottomPadding: CGFloat = 14
         /// Height of the open notch below the hardware notch strip.
         static let openContentHeight: CGFloat = 108
         /// The clipboard history needs room for a list, so the notch grows taller for it.
@@ -41,6 +44,11 @@ final class NotchViewModel {
         static let batteryEventDuration: TimeInterval = 3
         /// How long a new sound output stays next to the closed notch, in seconds.
         static let outputEventDuration: TimeInterval = 3
+        /// How long a translation nobody looks at stays open: time to read both texts, at about 15 characters a second
+        /// for the original, within limits.
+        static func translationReadingTime(for text: String) -> Duration {
+            .seconds(min(max(4 + Double(text.count) / 15, 6), 30))
+        }
         /// How far the lower lid hangs below the hardware notch, in the middle, to show the track title.
         static let trackTitleHeight: CGFloat = 30
         /// How far above the bottom of the lid the title runs.
@@ -77,6 +85,9 @@ final class NotchViewModel {
     /// Whether the notch stays open wherever the pointer goes: after the clipboard shortcut, until an entry is
     /// picked, Escape is pressed or the user clicks elsewhere.
     var isHeldOpen = false
+    /// Whether the notch stays open after showing a translation, until the pointer has been over it and left, a
+    /// click elsewhere, or it has had time to be read.
+    var isTranslationHeld = false
     /// The clipboard entry that Return copies, by its place in the list.
     var clipboardSelection = 0
     /// What's been typed to search the clipboard history.
@@ -91,6 +102,7 @@ final class NotchViewModel {
     let battery: BatteryService
     let shelf: Shelf
     let clipboard: ClipboardHistory
+    let translator: Translator
     let settings: AppSettings
     @ObservationIgnored let shelfDragSource = ShelfDragSource()
     /// The volume and outputs, for the Sound tab.
@@ -111,6 +123,7 @@ final class NotchViewModel {
         battery: BatteryService,
         shelf: Shelf,
         clipboard: ClipboardHistory,
+        translator: Translator,
         settings: AppSettings
     ) {
         self.geometry = geometry
@@ -119,6 +132,7 @@ final class NotchViewModel {
         self.battery = battery
         self.shelf = shelf
         self.clipboard = clipboard
+        self.translator = translator
         self.settings = settings
         shelfDragSource.onDrop = { [weak self] items in
             self?.didDragOut(items)
@@ -136,6 +150,18 @@ final class NotchViewModel {
 
     var showsSound: Bool {
         tab == .sound
+    }
+
+    var showsTranslation: Bool {
+        tab == .translation && translator.request != nil
+    }
+
+    /// As tall as the translation needs, within the notch's limits; a longer one scrolls.
+    var translationContentHeight: CGFloat {
+        guard let request = translator.request else { return Layout.openContentHeight }
+        let width = Layout.openWidth - 2 * Layout.openHorizontalPadding
+        let needed = TranslationLayout.height(for: request, width: width) + Layout.openBottomPadding
+        return min(max(needed, Layout.openContentHeight), Layout.clipboardContentHeight)
     }
 
     /// As tall as the outputs need, within limits.
@@ -264,9 +290,15 @@ final class NotchViewModel {
         let notch = geometry.notchSize
         switch state {
         case .open:
-            let contentHeight = showsClipboard
-                ? Layout.clipboardContentHeight
-                : (showsSound ? soundContentHeight : Layout.openContentHeight)
+            let contentHeight = if showsClipboard {
+                Layout.clipboardContentHeight
+            } else if showsSound {
+                soundContentHeight
+            } else if showsTranslation {
+                translationContentHeight
+            } else {
+                Layout.openContentHeight
+            }
             return CGSize(width: Layout.openWidth, height: notch.height + contentHeight)
         case .closed:
             let sideWidth = hud != nil || output != nil

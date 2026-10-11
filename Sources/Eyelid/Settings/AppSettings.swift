@@ -29,6 +29,10 @@ final class AppSettings {
         static let clipboardEnabled = "clipboardEnabled"
         static let clipboardHotKey = "clipboardHotKey"
         static let clipboardPastesAfterChoosing = "clipboardPastesAfterChoosing"
+        static let translatesOnDoubleCopy = "translatesOnDoubleCopy"
+        static let translationTarget = "translationTarget"
+        static let translationShortcutEnabled = "translationShortcutEnabled"
+        static let translationHotKey = "translationHotKey"
     }
 
     /// Delays offered in Settings, in seconds.
@@ -150,6 +154,27 @@ final class AppSettings {
         didSet { defaults.set(clipboardPastesAfterChoosing, forKey: Key.clipboardPastesAfterChoosing) }
     }
 
+    /// Whether text copied twice in a row, with ⌘C pressed twice, shows translated in the notch. Off by default: it
+    /// reads what's copied, and macOS asks before letting it.
+    var translatesOnDoubleCopy: Bool {
+        didSet { defaults.set(translatesOnDoubleCopy, forKey: Key.translatesOnDoubleCopy) }
+    }
+
+    /// The language to translate into, by identifier, or nil for the user's own languages.
+    var translationTarget: String? {
+        didSet { defaults.set(translationTarget, forKey: Key.translationTarget) }
+    }
+
+    /// Whether `translationHotKey` translates what's copied already. Off by default.
+    var translationShortcutEnabled: Bool {
+        didSet { defaults.set(translationShortcutEnabled, forKey: Key.translationShortcutEnabled) }
+    }
+
+    /// The shortcut that translates what's copied.
+    var translationHotKey: HotKey {
+        didSet { Self.store(translationHotKey, as: Key.translationHotKey, in: defaults) }
+    }
+
     /// Whether every display shows a notch, rather than only `displayID` or the automatic choice.
     var notchOnAllDisplays: Bool {
         didSet { defaults.set(notchOnAllDisplays, forKey: Key.notchOnAllDisplays) }
@@ -182,6 +207,10 @@ final class AppSettings {
         showsDateInOpenNotch = defaults.object(forKey: Key.showsDateInOpenNotch) as? Bool ?? true
         liveActivityShortcutEnabled = defaults.object(forKey: Key.liveActivityShortcutEnabled) as? Bool ?? true
         liveActivityHotKey = Self.hotKey(Key.liveActivityHotKey, in: defaults) ?? .liveActivityDefault
+        translatesOnDoubleCopy = defaults.object(forKey: Key.translatesOnDoubleCopy) as? Bool ?? false
+        translationTarget = defaults.object(forKey: Key.translationTarget) as? String
+        translationShortcutEnabled = defaults.object(forKey: Key.translationShortcutEnabled) as? Bool ?? false
+        translationHotKey = Self.hotKey(Key.translationHotKey, in: defaults) ?? .translationDefault
     }
 
     private static func store(_ hotKey: HotKey, as key: String, in defaults: any SettingsStore) {

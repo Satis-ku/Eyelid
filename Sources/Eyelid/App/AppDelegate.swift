@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var output = OutputService(settings: settings)
     let shelf = Shelf()
     let clipboard = ClipboardHistory(pinnedFile: ClipboardHistory.defaultPinnedFile)
+    private(set) lazy var translator = Translator(settings: settings)
+    private let doubleCopy = DoubleCopyWatcher()
     private let hotKeys = HotKeyCenter()
     private(set) lazy var clipboardShortcut = Shortcut(
         center: hotKeys,
@@ -19,6 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         center: hotKeys,
         isEnabled: { [settings] in settings.liveActivityShortcutEnabled },
         hotKey: { [settings] in settings.liveActivityHotKey }
+    )
+    private(set) lazy var translationShortcut = Shortcut(
+        center: hotKeys,
+        isEnabled: { [settings] in settings.translationShortcutEnabled },
+        hotKey: { [settings] in settings.translationHotKey }
     )
     private lazy var hud = HUDService(settings: settings)
     private var notches: NotchCoordinator?
@@ -43,11 +50,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             clipboard: clipboard,
             clipboardShortcut: clipboardShortcut,
             lidShortcut: lidShortcut,
+            translator: translator,
+            doubleCopy: doubleCopy,
+            translationShortcut: translationShortcut,
             hud: hud,
             settings: settings
         )
         followHUDSetting()
         followClipboardSetting()
+        followTranslationSetting()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -79,6 +90,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.followClipboardSetting()
+            }
+        }
+    }
+
+    /// Watches for text copied twice while that translates it, on Macs that can.
+    private func followTranslationSetting() {
+        withObservationTracking {
+            doubleCopy.setWatching(settings.translatesOnDoubleCopy && translator.isAvailable)
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.followTranslationSetting()
             }
         }
     }

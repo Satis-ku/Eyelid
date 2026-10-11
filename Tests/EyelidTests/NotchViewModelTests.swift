@@ -22,6 +22,7 @@ struct NotchViewModelTests {
             battery: BatteryService(),
             shelf: Shelf(store: InMemorySettingsStore(), promisedFilesDirectory: FileManager.default.temporaryDirectory),
             clipboard: ClipboardHistory(pasteboard: .withUniqueName(), pinnedFile: nil),
+            translator: Translator(settings: settings, engine: .fake(), pasteboard: .withUniqueName()),
             settings: settings
         )
     }

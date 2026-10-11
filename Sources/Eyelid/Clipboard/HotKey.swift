@@ -10,6 +10,8 @@ struct HotKey: Equatable, Sendable {
     static let clipboardDefault = HotKey(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey | shiftKey))
     /// Two keys side by side, for one hand, that hardly any app uses: ⌥Z only types "Ω".
     static let liveActivityDefault = HotKey(keyCode: UInt32(kVK_ANSI_Z), modifiers: UInt32(optionKey))
+    /// T for translate. ⌥T only types "†".
+    static let translationDefault = HotKey(keyCode: UInt32(kVK_ANSI_T), modifiers: UInt32(optionKey))
 
     init(keyCode: UInt32, modifiers: UInt32) {
         self.keyCode = keyCode

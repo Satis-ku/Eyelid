@@ -7,6 +7,8 @@ struct SettingsView: View {
     let clipboard: ClipboardHistory
     let clipboardShortcut: Shortcut
     let lidShortcut: Shortcut
+    let translator: Translator
+    let translationShortcut: Shortcut
 
     var body: some View {
         TabView {
@@ -22,6 +24,8 @@ struct SettingsView: View {
                 .tabItem { Label("Shelf", systemImage: "tray") }
             ClipboardSettings(settings: settings, clipboard: clipboard, shortcut: clipboardShortcut)
                 .tabItem { Label("Clipboard", systemImage: "doc.on.clipboard") }
+            TranslationSettings(settings: settings, translator: translator, shortcut: translationShortcut)
+                .tabItem { Label("Translation", systemImage: "translate") }
             AboutSettings()
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
