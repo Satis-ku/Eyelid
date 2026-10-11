@@ -38,7 +38,7 @@ struct NotchViewModelTests {
         let model = makeModel()
         model.state = .open
 
-        #expect(model.bodySize == CGSize(width: 440, height: 32 + 108))
+        #expect(model.bodySize == CGSize(width: NotchViewModel.Layout.openWidth, height: 32 + 108))
         #expect(model.topRadius == NotchViewModel.Layout.openTopRadius)
     }
 
@@ -92,6 +92,32 @@ struct NotchViewModelTests {
         // The text runs inside the lid, with room for its descenders.
         #expect(NotchViewModel.Layout.trackTitleInset >= 4)
         #expect(NotchViewModel.Layout.trackTitleInset + TrackTitle.fontSize < NotchViewModel.Layout.trackTitleHeight)
+    }
+
+    @Test func statusFitsRightOfTheCamera() {
+        let model = makeModel()
+
+        #expect(model.statusWidth == (NotchViewModel.Layout.openWidth - 185) / 2 - NotchViewModel.Layout.openHorizontalPadding)
+        // Enough for "Oct 11 10:07" and the battery.
+        #expect(model.statusWidth >= 115)
+    }
+
+    @Test func clockShowsBesideTheNotchWhileNothingPlays() {
+        let model = makeModel()
+        #expect(!model.showsIdleActivity)
+
+        model.settings.showsClockWhenIdle = true
+
+        #expect(model.showsIdleActivity)
+        #expect(model.bodySize.width == 185 + 2 * NotchViewModel.Layout.activitySideWidth)
+
+        // Events and hiding take it away.
+        model.hud = HUDEvent(kind: .volume, level: 0.5)
+        #expect(!model.showsIdleActivity)
+        model.hud = nil
+        model.settings.isLiveActivityHidden = true
+        #expect(!model.showsIdleActivity)
+        #expect(model.bodySize.width == 185)
     }
 
     @Test func hidingTheLiveActivityKeepsTheNotchToTheCamera() {

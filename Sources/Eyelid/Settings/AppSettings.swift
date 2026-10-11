@@ -13,6 +13,8 @@ final class AppSettings {
         static let showsTrackTitle = "showsTrackTitle"
         static let equalizerFollowsAudio = "equalizerFollowsAudio"
         static let isLiveActivityHidden = "isLiveActivityHidden"
+        static let showsClockWhenIdle = "showsClockWhenIdle"
+        static let showsDateInOpenNotch = "showsDateInOpenNotch"
         static let liveActivityShortcutEnabled = "liveActivityShortcutEnabled"
         static let liveActivityHotKey = "liveActivityHotKey"
         static let batteryActivityEnabled = "batteryActivityEnabled"
@@ -50,6 +52,17 @@ final class AppSettings {
     /// takes no more room in the menu bar than the camera. Volume, battery and output changes still show.
     var isLiveActivityHidden: Bool {
         didSet { defaults.set(isLiveActivityHidden, forKey: Key.isLiveActivityHidden) }
+    }
+
+    /// Whether the time and the battery show beside the closed notch while nothing plays, so it isn't bare. Off by
+    /// default.
+    var showsClockWhenIdle: Bool {
+        didSet { defaults.set(showsClockWhenIdle, forKey: Key.showsClockWhenIdle) }
+    }
+
+    /// Whether the open notch shows the date and time next to the battery.
+    var showsDateInOpenNotch: Bool {
+        didSet { defaults.set(showsDateInOpenNotch, forKey: Key.showsDateInOpenNotch) }
     }
 
     /// Whether `liveActivityHotKey` hides and shows the live activity.
@@ -165,6 +178,8 @@ final class AppSettings {
         clipboardPastesAfterChoosing = defaults.object(forKey: Key.clipboardPastesAfterChoosing) as? Bool ?? false
         clipboardHotKey = Self.hotKey(Key.clipboardHotKey, in: defaults) ?? .clipboardDefault
         isLiveActivityHidden = defaults.object(forKey: Key.isLiveActivityHidden) as? Bool ?? false
+        showsClockWhenIdle = defaults.object(forKey: Key.showsClockWhenIdle) as? Bool ?? false
+        showsDateInOpenNotch = defaults.object(forKey: Key.showsDateInOpenNotch) as? Bool ?? true
         liveActivityShortcutEnabled = defaults.object(forKey: Key.liveActivityShortcutEnabled) as? Bool ?? true
         liveActivityHotKey = Self.hotKey(Key.liveActivityHotKey, in: defaults) ?? .liveActivityDefault
     }

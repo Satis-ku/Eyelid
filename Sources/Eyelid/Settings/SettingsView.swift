@@ -92,6 +92,16 @@ private struct NotchSettings: View {
                 }
                 .disabled(!AudioLevels.isSupported || !settings.showsLiveActivity)
 
+                Toggle(isOn: $settings.showsClockWhenIdle) {
+                    Text("Clock when nothing plays")
+                    Text("Shows the time and the battery next to the notch, so you can hide them from the menu bar.")
+                }
+
+                Toggle(isOn: $settings.showsDateInOpenNotch) {
+                    Text("Date and time in the open notch")
+                    Text("Next to the battery.")
+                }
+
                 Toggle(isOn: $settings.showsTrackTitle) {
                     Text("Track title")
                     Text("Shows the title under the notch when something starts playing, in the colors of its artwork.")
