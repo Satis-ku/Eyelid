@@ -36,6 +36,8 @@ struct ClosedActivityView: View {
     let track: NowPlayingTrack
     let notchSize: CGSize
     var levels: [Double]? = nil
+    /// The pointer is over the equalizer, which takes clicks: it lights up a little.
+    var isEqualizerHovered = false
     /// A click on the equalizer opens the Sound tab.
     var openSound: @MainActor () -> Void = {}
 
@@ -49,8 +51,16 @@ struct ClosedActivityView: View {
                 .frame(width: notchSize.width)
             Button(action: openSound) {
                 EqualizerView(isPlaying: track.isPlaying, levels: levels)
+                    .scaleEffect(isEqualizerHovered ? 1.15 : 1)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(.white.opacity(isEqualizerHovered ? 0.16 : 0))
+                    )
                     .frame(width: sideWidth, height: notchSize.height)
                     .contentShape(Rectangle())
+                    .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isEqualizerHovered)
             }
             .buttonStyle(PressableButtonStyle())
             .accessibilityLabel("Sound")

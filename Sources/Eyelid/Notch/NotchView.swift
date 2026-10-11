@@ -75,7 +75,12 @@ struct NotchView: View {
             BatteryActivityView(event: event, notchSize: model.geometry.notchSize)
                 .transition(.opacity)
         } else if model.showsNowPlayingActivity, let track = model.nowPlaying.track {
-            ClosedActivityView(track: track, notchSize: model.geometry.notchSize, levels: model.audioLevels.levels) {
+            ClosedActivityView(
+                track: track,
+                notchSize: model.geometry.notchSize,
+                levels: model.audioLevels.levels,
+                isEqualizerHovered: model.isHoveringEqualizer
+            ) {
                 model.openSound()
             }
                 .transition(.opacity)

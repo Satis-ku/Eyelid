@@ -201,8 +201,7 @@ final class NotchWindowController {
 
     /// Opens the notch on the Sound tab, after a click on the equalizer.
     private func openSound() {
-        model.tab = .sound
-        open()
+        open(on: .sound)
     }
 
     // MARK: - Hover
@@ -270,6 +269,12 @@ final class NotchWindowController {
         if model.state == .closed {
             panel.ignoresMouseEvents = !isOverEqualizer
         }
+        if isOverEqualizer != model.isHoveringEqualizer {
+            model.isHoveringEqualizer = isOverEqualizer
+            if isOverEqualizer, settings.hapticsEnabled {
+                NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+            }
+        }
         let isInside = model.hoverRect.contains(pointer) && !isOverEqualizer
         switch (model.state, isInside) {
         case (.closed, true):
@@ -302,15 +307,21 @@ final class NotchWindowController {
         }
     }
 
-    private func open() {
+    /// Opens on `tab` when there's a reason for it: the clipboard shortcut, or a click on the equalizer. Otherwise on
+    /// the shelf for files being dragged, on Now Playing while something is heard, and on the last tab otherwise.
+    private func open(on tab: NotchViewModel.Tab? = nil) {
         logger.debug("Opened")
         openTask?.cancel()
         openTask = nil
         dismissTrackTitle()
+        if let tab {
+            model.tab = tab
+        } else if settings.shelfEnabled, model.isDraggingFiles {
+            model.tab = .shelf
+        } else if model.nowPlaying.track?.isPlaying == true, !model.nowPlaying.isSilent {
+            model.tab = .nowPlaying
+        }
         if settings.shelfEnabled {
-            if model.isDraggingFiles {
-                model.tab = .shelf
-            }
             model.shelf.refresh()
         }
         model.state = .open
@@ -366,10 +377,9 @@ extension NotchWindowController {
         guard settings.clipboardEnabled else { return }
 
         logger.debug("Opened the clipboard history")
-        model.tab = .clipboard
         model.resetClipboard()
         model.isHeldOpen = true
-        open()
+        open(on: .clipboard)
         takeKeyboard()
     }
 

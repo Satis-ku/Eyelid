@@ -95,6 +95,8 @@ final class NotchViewModel {
     @ObservationIgnored let shelfDragSource = ShelfDragSource()
     /// The volume and outputs, for the Sound tab.
     let sound = SoundControl()
+    /// Whether the pointer is over the equalizer beside the closed notch, which it then highlights.
+    var isHoveringEqualizer = false
     /// Opens the notch on the Sound tab. Set by the window controller, which owns opening.
     @ObservationIgnored var openSound: @MainActor () -> Void = {}
     /// Set by the window controller, which owns opening and closing.
