@@ -221,7 +221,7 @@ final class NotchWindowController {
         translationTask?.cancel()
         translationTask = nil
         if model.state == .open {
-            model.tab = .translation
+            model.select(.translation)
         } else {
             open(on: .translation)
         }
@@ -367,6 +367,7 @@ final class NotchWindowController {
         openTask?.cancel()
         openTask = nil
         dismissTrackTitle()
+        model.showsSectionMenu = false
         if let tab {
             model.tab = tab
         } else if settings.shelfEnabled, model.isDraggingFiles {
@@ -397,6 +398,7 @@ final class NotchWindowController {
         logger.debug("Closed")
         let wasPinned = model.isHeldOpen
         model.state = .closed
+        model.showsSectionMenu = false
         model.isDropTargeted = false
         model.isHeldOpen = false
         if wasPinned {

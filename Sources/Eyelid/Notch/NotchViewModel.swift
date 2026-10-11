@@ -10,13 +10,7 @@ final class NotchViewModel {
     }
 
     /// What the open notch shows below the strip beside the hardware notch.
-    enum Tab {
-        case nowPlaying
-        case shelf
-        case clipboard
-        case sound
-        case translation
-    }
+    typealias Tab = NotchSection
 
     enum Layout {
         static let openWidth: CGFloat = 470
@@ -24,11 +18,12 @@ final class NotchViewModel {
         static let openHorizontalPadding: CGFloat = 18
         /// Room below the open notch's content.
         static let openBottomPadding: CGFloat = 14
-        /// Each tab button in the strip beside the camera, and the room between them.
-        static let tabWidth: CGFloat = 28
-        static let tabSpacing: CGFloat = 2
-        /// Room between the camera and tabs right of it.
-        static let cameraGap: CGFloat = 6
+        /// The dock of pinned sections along the bottom of the open notch.
+        static let dockHeight: CGFloat = 34
+        /// Tiles in the menu of all sections: this many a row, this tall, this far apart.
+        static let sectionMenuColumns = 4
+        static let sectionTileHeight: CGFloat = 44
+        static let sectionTileSpacing: CGFloat = 6
         /// Height of the open notch below the hardware notch strip.
         static let openContentHeight: CGFloat = 108
         /// The clipboard history needs room for a list, so the notch grows taller for it.
@@ -87,6 +82,8 @@ final class NotchViewModel {
     var isDraggingFiles = false
     /// Whether files are being dragged over the open notch, which would add them to the shelf.
     var isDropTargeted = false
+    /// Whether the open notch shows the menu of all sections, in place of the current one.
+    var showsSectionMenu = false
     /// Whether the notch has the keyboard and stays open wherever the pointer goes: for the clipboard history after
     /// its shortcut, or for typing a translation, until Escape, a click elsewhere, or an entry is picked.
     var isHeldOpen = false
@@ -170,34 +167,48 @@ final class NotchViewModel {
         return min(max(needed, Layout.openContentHeight), Layout.clipboardContentHeight)
     }
 
-    /// The tabs in the strip beside the camera, in order.
-    var tabs: [Tab] {
-        var tabs: [Tab] = [.nowPlaying]
-        if settings.shelfEnabled {
-            tabs.append(.shelf)
+    /// The sections there are, in the user's order: the shelf and the clipboard history only while they're on, and
+    /// the translator on Macs that can translate.
+    var sections: [NotchSection] {
+        settings.sectionOrder.filter { section in
+            switch section {
+            case .shelf: settings.shelfEnabled
+            case .clipboard: settings.clipboardEnabled
+            case .translation: translator.isAvailable
+            case .nowPlaying, .sound: true
+            }
         }
-        if settings.clipboardEnabled {
-            tabs.append(.clipboard)
-        }
-        tabs.append(.sound)
-        if translator.isAvailable {
-            tabs.append(.translation)
-        }
-        return tabs
     }
 
-    /// How many tabs fit left of the camera. The rest go right of it, before the date and battery, which then
-    /// show less.
-    var leadingTabCount: Int {
-        let fitting = Int((statusWidth + Layout.tabSpacing) / (Layout.tabWidth + Layout.tabSpacing))
-        return min(tabs.count, max(fitting, 1))
+    /// The pinned sections, in the dock at the bottom of the open notch.
+    var dockSections: [NotchSection] {
+        Array(sections.filter(settings.pinnedSections.contains).prefix(NotchSection.maxPinned))
     }
 
-    /// The width the tabs right of the camera take, with the room between them and the date.
-    var trailingTabsWidth: CGFloat {
-        let count = tabs.count - leadingTabCount
-        guard count > 0 else { return 0 }
-        return Layout.cameraGap + CGFloat(count) * (Layout.tabWidth + Layout.tabSpacing)
+    /// The section the open notch shows: the chosen one, or Now Playing when that one is off.
+    var currentSection: NotchSection {
+        sections.contains(tab) ? tab : .nowPlaying
+    }
+
+    /// Shows a section, and puts the menu of all sections away.
+    func select(_ section: NotchSection) {
+        if section == .clipboard {
+            resetClipboard()
+        }
+        tab = section
+        showsSectionMenu = false
+    }
+
+    /// The section's icon, with a full tray for a shelf with files on it.
+    func systemImage(for section: NotchSection) -> String {
+        section == .shelf && !shelf.items.isEmpty ? "tray.full" : section.systemImage
+    }
+
+    /// As tall as the menu of all sections needs, a row of tiles for every four.
+    var sectionMenuHeight: CGFloat {
+        let rows = (sections.count + Layout.sectionMenuColumns - 1) / Layout.sectionMenuColumns
+        let tiles = CGFloat(rows) * Layout.sectionTileHeight + CGFloat(max(rows - 1, 0)) * Layout.sectionTileSpacing
+        return max(tiles + Layout.openBottomPadding, Layout.openContentHeight)
     }
 
     /// Whether the translation's text field has the keyboard, which holds the notch open.
@@ -331,7 +342,9 @@ final class NotchViewModel {
         let notch = geometry.notchSize
         switch state {
         case .open:
-            let contentHeight = if showsClipboard {
+            let contentHeight = if showsSectionMenu {
+                sectionMenuHeight
+            } else if showsClipboard {
                 Layout.clipboardContentHeight
             } else if showsSound {
                 soundContentHeight
@@ -340,7 +353,7 @@ final class NotchViewModel {
             } else {
                 Layout.openContentHeight
             }
-            return CGSize(width: Layout.openWidth, height: notch.height + contentHeight)
+            return CGSize(width: Layout.openWidth, height: notch.height + contentHeight + Layout.dockHeight)
         case .closed:
             let sideWidth = hud != nil || output != nil
                 ? Layout.hudSideWidth
@@ -368,6 +381,7 @@ final class NotchViewModel {
             width: Layout.openWidth + 2 * Layout.openTopRadius + 2 * Layout.shadowPadding,
             height: geometry.notchSize.height
                 + max(Layout.openContentHeight, Layout.clipboardContentHeight)
+                + Layout.dockHeight
                 + Layout.shadowPadding
         )
     }

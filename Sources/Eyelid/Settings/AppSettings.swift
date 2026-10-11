@@ -33,6 +33,8 @@ final class AppSettings {
         static let translationTarget = "translationTarget"
         static let translationShortcutEnabled = "translationShortcutEnabled"
         static let translationHotKey = "translationHotKey"
+        static let sectionOrder = "sectionOrder"
+        static let pinnedSections = "pinnedSections"
     }
 
     /// Delays offered in Settings, in seconds.
@@ -175,6 +177,32 @@ final class AppSettings {
         didSet { Self.store(translationHotKey, as: Key.translationHotKey, in: defaults) }
     }
 
+    /// The open notch's sections in the order the user put them, every one of them.
+    var sectionOrder: [NotchSection] {
+        didSet { defaults.set(sectionOrder.map(\.rawValue), forKey: Key.sectionOrder) }
+    }
+
+    /// The sections in the dock at the bottom of the open notch, `NotchSection.maxPinned` at most. By default, as many
+    /// as fit, in order.
+    var pinnedSections: Set<NotchSection> {
+        didSet { defaults.set(sectionOrder.filter(pinnedSections.contains).map(\.rawValue), forKey: Key.pinnedSections) }
+    }
+
+    /// Pins a section to the dock or unpins it. Past the limit, a section isn't pinned.
+    func setPinned(_ section: NotchSection, _ isPinned: Bool) {
+        if isPinned {
+            guard pinnedSections.count < NotchSection.maxPinned else { return }
+            pinnedSections.insert(section)
+        } else {
+            pinnedSections.remove(section)
+        }
+    }
+
+    /// Moves sections, as a list's drag and drop does.
+    func moveSections(from source: IndexSet, to destination: Int) {
+        sectionOrder.move(fromOffsets: source, toOffset: destination)
+    }
+
     /// Whether every display shows a notch, rather than only `displayID` or the automatic choice.
     var notchOnAllDisplays: Bool {
         didSet { defaults.set(notchOnAllDisplays, forKey: Key.notchOnAllDisplays) }
@@ -211,6 +239,13 @@ final class AppSettings {
         translationTarget = defaults.object(forKey: Key.translationTarget) as? String
         translationShortcutEnabled = defaults.object(forKey: Key.translationShortcutEnabled) as? Bool ?? true
         translationHotKey = Self.hotKey(Key.translationHotKey, in: defaults) ?? .translationDefault
+        let order = NotchSection.order(from: defaults.object(forKey: Key.sectionOrder) as? [String])
+        sectionOrder = order
+        if let pinned = defaults.object(forKey: Key.pinnedSections) as? [String] {
+            pinnedSections = Set(pinned.compactMap(NotchSection.init(rawValue:)).prefix(NotchSection.maxPinned))
+        } else {
+            pinnedSections = Set(order.prefix(NotchSection.maxPinned))
+        }
     }
 
     private static func store(_ hotKey: HotKey, as key: String, in defaults: any SettingsStore) {

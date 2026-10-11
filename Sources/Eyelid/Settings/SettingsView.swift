@@ -16,6 +16,8 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             NotchSettings(settings: settings, shortcut: lidShortcut)
                 .tabItem { Label("Notch", systemImage: "rectangle.topthird.inset.filled") }
+            SectionsSettings(settings: settings, canTranslate: translator.isAvailable)
+                .tabItem { Label("Sections", systemImage: "square.grid.2x2") }
             VolumeAndBrightnessSettings(settings: settings)
                 .tabItem { Label("Volume & Brightness", systemImage: "speaker.wave.2") }
             BatterySettings(settings: settings)

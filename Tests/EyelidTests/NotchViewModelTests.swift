@@ -39,7 +39,10 @@ struct NotchViewModelTests {
         let model = makeModel()
         model.state = .open
 
-        #expect(model.bodySize == CGSize(width: NotchViewModel.Layout.openWidth, height: 32 + 108))
+        #expect(model.bodySize == CGSize(
+            width: NotchViewModel.Layout.openWidth,
+            height: 32 + 108 + NotchViewModel.Layout.dockHeight
+        ))
         #expect(model.topRadius == NotchViewModel.Layout.openTopRadius)
     }
 
@@ -103,7 +106,7 @@ struct NotchViewModelTests {
 
         #expect(model.showsSound)
         // Before the outputs are read, as tall as the other tabs.
-        #expect(model.bodySize.height == 32 + model.soundContentHeight)
+        #expect(model.bodySize.height == 32 + model.soundContentHeight + NotchViewModel.Layout.dockHeight)
         #expect(model.soundContentHeight >= NotchViewModel.Layout.openContentHeight)
         #expect(model.soundContentHeight <= NotchViewModel.Layout.soundContentHeight)
         #expect(model.windowSize.height >= model.bodySize.height)
@@ -273,12 +276,13 @@ struct NotchViewModelTests {
         let model = makeModel()
         model.state = .open
         model.tab = .clipboard
-        #expect(model.bodySize.height == 32 + NotchViewModel.Layout.openContentHeight)
+        let dock = NotchViewModel.Layout.dockHeight
+        #expect(model.bodySize.height == 32 + NotchViewModel.Layout.openContentHeight + dock)
 
         model.settings.clipboardEnabled = true
 
         #expect(model.showsClipboard)
-        #expect(model.bodySize.height == 32 + NotchViewModel.Layout.clipboardContentHeight)
+        #expect(model.bodySize.height == 32 + NotchViewModel.Layout.clipboardContentHeight + dock)
         #expect(model.windowSize.height > model.bodySize.height)
     }
 
@@ -373,27 +377,44 @@ struct NotchViewModelTests {
         #expect(pastes == 1)
     }
 
-    // MARK: - Tabs and the translator
+    // MARK: - Sections
 
-    /// Five tabs don't fit left of a 185-point camera, so the last goes right of it.
-    @Test func tabsThatDontFitGoRightOfTheCamera() {
+    @Test func dockHoldsThePinnedSectionsInOrder() {
         let model = makeModel()
         model.settings.clipboardEnabled = true
 
-        #expect(model.tabs == [.nowPlaying, .shelf, .clipboard, .sound, .translation])
-        #expect(model.leadingTabCount == 4)
-        #expect(model.trailingTabsWidth == NotchViewModel.Layout.cameraGap + NotchViewModel.Layout.tabWidth
-            + NotchViewModel.Layout.tabSpacing)
-        let leadingWidth = CGFloat(model.leadingTabCount) * (NotchViewModel.Layout.tabWidth + NotchViewModel.Layout.tabSpacing)
-        #expect(leadingWidth <= model.statusWidth + NotchViewModel.Layout.tabSpacing)
+        #expect(model.sections == [.nowPlaying, .shelf, .clipboard, .sound, .translation])
+        #expect(model.dockSections == model.sections)
+
+        model.settings.setPinned(.shelf, false)
+        model.settings.moveSections(from: [4], to: 0)
+
+        #expect(model.sections == [.translation, .nowPlaying, .shelf, .clipboard, .sound])
+        #expect(model.dockSections == [.translation, .nowPlaying, .clipboard, .sound])
     }
 
-    @Test func fourTabsFitLeftOfTheCamera() {
+    @Test func sectionsThatAreOffAreLeftOut() {
         let model = makeModel()
+        model.settings.shelfEnabled = false
+        model.tab = .shelf
 
-        #expect(model.tabs == [.nowPlaying, .shelf, .sound, .translation])
-        #expect(model.leadingTabCount == 4)
-        #expect(model.trailingTabsWidth == 0)
+        #expect(model.sections == [.nowPlaying, .sound, .translation])
+        #expect(model.currentSection == .nowPlaying)
+    }
+
+    @Test func menuOfAllSectionsTakesThePlaceOfTheCurrentOne() {
+        let model = makeModel()
+        model.state = .open
+        model.settings.clipboardEnabled = true
+        model.tab = .clipboard
+        model.showsSectionMenu = true
+
+        #expect(model.bodySize.height == 32 + model.sectionMenuHeight + NotchViewModel.Layout.dockHeight)
+
+        model.select(.sound)
+
+        #expect(!model.showsSectionMenu)
+        #expect(model.tab == .sound)
     }
 
     @Test func notchGrowsWithTheTranslation() async {
@@ -405,9 +426,10 @@ struct NotchViewModelTests {
         model.translator.translate(String(repeating: "A long sentence to translate, again and again. ", count: 12))
         await model.translator.task?.value
 
-        #expect(empty == 32 + NotchViewModel.Layout.openContentHeight)
+        let dock = NotchViewModel.Layout.dockHeight
+        #expect(empty == 32 + NotchViewModel.Layout.openContentHeight + dock)
         #expect(model.bodySize.height > empty)
-        #expect(model.bodySize.height <= 32 + NotchViewModel.Layout.clipboardContentHeight)
+        #expect(model.bodySize.height <= 32 + NotchViewModel.Layout.clipboardContentHeight + dock)
     }
 
     @Test func typingNeedsTheKeyboardOnTheTranslator() {
