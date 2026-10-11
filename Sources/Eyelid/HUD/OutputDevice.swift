@@ -48,7 +48,11 @@ extension OutputDevice {
         )
     }
 
-    /// Every visible device that can play sound, the default one first.
+    /// The start of the UIDs of the devices Eyelid makes for itself, such as the equalizer's tap. Their own process
+    /// sees them, so they're left out of every list.
+    static let ownDevicePrefix = "io.github.satis-ku.eyelid."
+
+    /// Every visible device that can play sound, the default one first. Not the devices Eyelid makes for itself.
     static func all() -> [OutputDevice] {
         let devices: [AudioDeviceID] = AudioProperty.array(
             AudioProperty.address(kAudioHardwarePropertyDevices),
@@ -67,6 +71,7 @@ extension OutputDevice {
             }
             .sorted { $0 == defaultDevice && $1 != defaultDevice }
             .compactMap(OutputDevice.init(audioDevice:))
+            .filter { !$0.id.hasPrefix(ownDevicePrefix) }
     }
 }
 
