@@ -24,16 +24,14 @@ final class NotchViewModel {
         static let sectionMenuColumns = 4
         static let sectionTileHeight: CGFloat = 44
         static let sectionTileSpacing: CGFloat = 6
-        /// Height of the open notch below the hardware notch strip.
-        static let openContentHeight: CGFloat = 108
-        /// The clipboard history needs room for a list, so the notch grows taller for it.
-        static let clipboardContentHeight: CGFloat = 236
-        /// The Sound tab grows with the outputs, up to this many, which fit the tallest the notch gets.
-        static let soundMaxRows = 6
-        static let soundContentHeight: CGFloat = soundFixedHeight + CGFloat(soundMaxRows) * soundRowHeight
-        /// The Sound tab's volume row and Sound Settings link, and the height of each output.
+        /// Height of the open notch's section, between the strip beside the camera and the dock. The same for every
+        /// section, so switching between them in the dock doesn't pull the notch out from under the pointer.
+        static let openContentHeight: CGFloat = 200
+        /// The Sound section's volume row and Sound Settings link, and the height of each output.
         static let soundFixedHeight: CGFloat = 70
         static let soundRowHeight: CGFloat = 26
+        /// As many outputs as fit the section.
+        static let soundMaxRows = Int((openContentHeight - soundFixedHeight) / soundRowHeight)
         /// Extra room on each side of the closed notch for the live activity.
         static let activitySideWidth: CGFloat = 42
         /// Room on each side of the closed notch for the volume and brightness HUD.
@@ -160,13 +158,6 @@ final class NotchViewModel {
         tab == .translation && translator.isAvailable
     }
 
-    /// As tall as the translation needs, within the notch's limits; a longer one scrolls.
-    var translationContentHeight: CGFloat {
-        let panel = TranslationLayout.height(input: translator.input, request: translator.request)
-        let needed = panel + Layout.openBottomPadding
-        return min(max(needed, Layout.openContentHeight), Layout.clipboardContentHeight)
-    }
-
     /// The sections there are, in the user's order: the shelf and the clipboard history only while they're on, and
     /// the translator on Macs that can translate.
     var sections: [NotchSection] {
@@ -204,23 +195,9 @@ final class NotchViewModel {
         section == .shelf && !shelf.items.isEmpty ? "tray.full" : section.systemImage
     }
 
-    /// As tall as the menu of all sections needs, a row of tiles for every four.
-    var sectionMenuHeight: CGFloat {
-        let rows = (sections.count + Layout.sectionMenuColumns - 1) / Layout.sectionMenuColumns
-        let tiles = CGFloat(rows) * Layout.sectionTileHeight + CGFloat(max(rows - 1, 0)) * Layout.sectionTileSpacing
-        return max(tiles + Layout.openBottomPadding, Layout.openContentHeight)
-    }
-
     /// Whether the translation's text field has the keyboard, which holds the notch open.
     var isTypingTranslation: Bool {
         state == .open && isHeldOpen && tab == .translation
-    }
-
-    /// As tall as the outputs need, within limits.
-    var soundContentHeight: CGFloat {
-        let rows = CGFloat(max(sound.devices.count, 1))
-        let needed = Layout.soundFixedHeight + rows * Layout.soundRowHeight
-        return min(max(needed, Layout.openContentHeight), Layout.soundContentHeight)
     }
 
     /// The clipboard entries that match what's been typed.
@@ -342,18 +319,7 @@ final class NotchViewModel {
         let notch = geometry.notchSize
         switch state {
         case .open:
-            let contentHeight = if showsSectionMenu {
-                sectionMenuHeight
-            } else if showsClipboard {
-                Layout.clipboardContentHeight
-            } else if showsSound {
-                soundContentHeight
-            } else if showsTranslation {
-                translationContentHeight
-            } else {
-                Layout.openContentHeight
-            }
-            return CGSize(width: Layout.openWidth, height: notch.height + contentHeight + Layout.dockHeight)
+            return CGSize(width: Layout.openWidth, height: notch.height + Layout.openContentHeight + Layout.dockHeight)
         case .closed:
             let sideWidth = hud != nil || output != nil
                 ? Layout.hudSideWidth
@@ -380,7 +346,7 @@ final class NotchViewModel {
         CGSize(
             width: Layout.openWidth + 2 * Layout.openTopRadius + 2 * Layout.shadowPadding,
             height: geometry.notchSize.height
-                + max(Layout.openContentHeight, Layout.clipboardContentHeight)
+                + Layout.openContentHeight
                 + Layout.dockHeight
                 + Layout.shadowPadding
         )

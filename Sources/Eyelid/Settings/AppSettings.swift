@@ -198,9 +198,12 @@ final class AppSettings {
         }
     }
 
-    /// Moves sections, as a list's drag and drop does.
-    func moveSections(from source: IndexSet, to destination: Int) {
-        sectionOrder.move(fromOffsets: source, toOffset: destination)
+    /// Moves a section to where `target` is, as dropping it on that row does: before it when moving up, after it when
+    /// moving down.
+    func moveSection(_ section: NotchSection, to target: NotchSection) {
+        guard let from = sectionOrder.firstIndex(of: section), let to = sectionOrder.firstIndex(of: target), from != to
+        else { return }
+        sectionOrder.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to)
     }
 
     /// Whether every display shows a notch, rather than only `displayID` or the automatic choice.

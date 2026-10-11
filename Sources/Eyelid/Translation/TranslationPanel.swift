@@ -130,7 +130,7 @@ struct TranslationPanel: View {
     }
 }
 
-/// Sizes shared by the panel and the notch, which grows with the text and its translation.
+/// Sizes of the panel's parts.
 enum TranslationLayout {
     static let topPadding: CGFloat = 2
     static let headerHeight: CGFloat = 18
@@ -140,9 +140,6 @@ enum TranslationLayout {
     static let inputLines = 3
     static let inputPadding = CGSize(width: 8, height: 5)
     static let translationSize: CGFloat = 14
-    /// A line of "Translating…", or a message and a button.
-    static let translatingHeight: CGFloat = 18
-    static let failureHeight: CGFloat = 54
 
     /// The width of the open notch's content, which the panel fills.
     @MainActor
@@ -157,25 +154,6 @@ enum TranslationLayout {
         let line = lineHeight(font)
         let text = textHeight(input, font: font, width: width - 2 * inputPadding.width)
         return min(max(text, line), line * CGFloat(inputLines))
-    }
-
-    /// How tall the panel would like to be for `input` and `request`.
-    @MainActor
-    static func height(input: String, request: Translator.Request?) -> CGFloat {
-        var height = topPadding + headerHeight + spacing + inputHeight(input) + 2 * inputPadding.height
-        guard let request else { return ceil(height) }
-
-        let translationFont = NSFont.systemFont(ofSize: translationSize, weight: .medium)
-        height += spacing
-        switch request.outcome {
-        case .translating:
-            height += request.previous.map { textHeight($0, font: translationFont, width: width) } ?? translatingHeight
-        case .translated(let translated):
-            height += textHeight(translated, font: translationFont, width: width)
-        case .failed:
-            height += failureHeight
-        }
-        return ceil(height)
     }
 
     private static func textHeight(_ text: String, font: NSFont, width: CGFloat) -> CGFloat {

@@ -120,12 +120,22 @@ struct AppSettingsTests {
         let store = InMemorySettingsStore()
         let settings = AppSettings(defaults: store)
 
-        settings.moveSections(from: [3], to: 0)
+        settings.moveSection(.sound, to: .nowPlaying)
         settings.setPinned(.clipboard, false)
 
         let reopened = AppSettings(defaults: store)
         #expect(reopened.sectionOrder == [.sound, .nowPlaying, .shelf, .clipboard, .translation])
         #expect(reopened.pinnedSections == [.sound, .nowPlaying, .shelf, .translation])
+    }
+
+    @Test func droppingASectionOnAnotherTakesItsPlace() {
+        let settings = AppSettings(defaults: InMemorySettingsStore())
+
+        settings.moveSection(.nowPlaying, to: .clipboard)
+        #expect(settings.sectionOrder == [.shelf, .clipboard, .nowPlaying, .sound, .translation])
+
+        settings.moveSection(.translation, to: .shelf)
+        #expect(settings.sectionOrder == [.translation, .shelf, .clipboard, .nowPlaying, .sound])
     }
 
     @Test func newSectionsJoinAtTheEndUnpinned() {
