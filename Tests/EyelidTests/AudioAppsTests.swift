@@ -42,4 +42,28 @@ struct AudioAppsTests {
     @Test func unknownOwnerStandsForItself() {
         #expect(apps([40]).map(\.name) == ["Arc"])
     }
+
+    /// Looking an app up takes a while, so a process without one is asked about once, however many it has.
+    @Test func aProcessWithoutAnAppIsLookedUpOnce() {
+        var lookups = 0
+        let processes = [30, 30, 30].map { AudioApps.AudioProcess(object: AudioObjectID($0), pid: $0, isPlaying: true) }
+
+        let found = AudioApps.apps(processes, responsible: { $0 }) { _ in
+            lookups += 1
+            return nil
+        }
+
+        #expect(found.isEmpty)
+        #expect(lookups == 1)
+    }
+
+    @Test func namesSortAsFinderSortsThem() {
+        let processes = [9, 10].map { AudioApps.AudioProcess(object: AudioObjectID($0), pid: $0, isPlaying: true) }
+
+        let found = AudioApps.apps(processes, responsible: { $0 }) { pid in
+            AudioApp(id: pid, name: "App \(pid == 9 ? 10 : 9)", bundleIdentifier: nil, bundleURL: nil, icon: nil)
+        }
+
+        #expect(found.map(\.name) == ["App 9", "App 10"])
+    }
 }

@@ -148,6 +148,50 @@ struct AppSettingsTests {
         #expect(settings.sectionOrder == [.sound, .nowPlaying, .shelf, .clipboard, .translation])
         #expect(settings.pinnedSections == [.sound])
     }
+
+    @Test func translationSettingsSurviveARelaunch() {
+        let store = InMemorySettingsStore()
+        let settings = AppSettings(defaults: store)
+        #expect(settings.translatesOnDoubleCopy == false)
+        #expect(settings.translationTarget == nil)
+        #expect(settings.translationShortcutEnabled)
+        #expect(settings.translationHotKey == .translationDefault)
+
+        let hotKey = HotKey(keyCode: 17, modifiers: 2048 | 256)
+        settings.translatesOnDoubleCopy = true
+        settings.translationTarget = "fr"
+        settings.translationShortcutEnabled = false
+        settings.translationHotKey = hotKey
+
+        let relaunched = AppSettings(defaults: store)
+        #expect(relaunched.translatesOnDoubleCopy)
+        #expect(relaunched.translationTarget == "fr")
+        #expect(relaunched.translationShortcutEnabled == false)
+        #expect(relaunched.translationHotKey == hotKey)
+
+        relaunched.translationTarget = nil
+        #expect(AppSettings(defaults: store).translationTarget == nil)
+    }
+
+    /// A shortcut stored in a shape this build doesn't read falls back to the default rather than to nothing.
+    @Test func aBrokenStoredShortcutIsTheDefault() {
+        let store = InMemorySettingsStore()
+        store.set(["keyCode": 6], forKey: "liveActivityHotKey")
+        store.set("⌥T", forKey: "translationHotKey")
+
+        let settings = AppSettings(defaults: store)
+
+        #expect(settings.liveActivityHotKey == .liveActivityDefault)
+        #expect(settings.translationHotKey == .translationDefault)
+    }
+
+    @Test(arguments: [
+        (nil, NotchSection.allCases),
+        (["sound", "sound", "shelf"], [.sound, .shelf, .nowPlaying, .clipboard, .translation]),
+    ] as [([String]?, [NotchSection])])
+    func everySectionIsInTheOrderOnce(stored: [String]?, expected: [NotchSection]) {
+        #expect(NotchSection.order(from: stored) == expected)
+    }
 }
 
 /// Keeps settings in memory, so tests neither read nor write the real preferences.

@@ -55,10 +55,10 @@ final class ShelfTests {
         #expect(paths(shelf) == [path(first), path(second)])
     }
 
-    @Test func takesOnlyFiles() {
+    @Test func takesOnlyFiles() throws {
         let shelf = makeShelf()
 
-        shelf.add([URL(string: "https://example.com/file.zip")!])
+        shelf.add([try #require(URL(string: "https://example.com/file.zip"))])
 
         #expect(shelf.items.isEmpty)
     }
@@ -126,7 +126,7 @@ final class ShelfTests {
         let shelf = makeShelf()
         shelf.add([try makeFile("a.txt"), try makeFile("b.txt"), try makeFile("c.txt")])
 
-        shelf.remove(shelf.items[1].id)
+        shelf.remove(try #require(shelf.items.dropFirst().first).id)
         #expect(shelf.items.count == 2)
 
         shelf.removeAll()
@@ -170,7 +170,7 @@ final class ShelfTests {
 }
 
 @MainActor
-@Suite("Dropping on the shelf")
+@Suite("Dropping on the shelf", .timeLimit(.minutes(1)))
 struct ShelfDropTests {
     @Test func filesAndPromisedFilesCount() {
         #expect(ShelfDrop.carriesFiles([.fileURL]))
@@ -212,7 +212,8 @@ struct ShelfDropTests {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
         pasteboard.clearContents()
-        pasteboard.writeObjects([file as NSURL, URL(string: "https://example.com")! as NSURL])
+        let link = try #require(URL(string: "https://example.com"))
+        pasteboard.writeObjects([file as NSURL, link as NSURL])
         let shelf = Shelf(store: InMemorySettingsStore(), promisedFilesDirectory: FileManager.default.temporaryDirectory)
 
         #expect(ShelfDrop.receive(pasteboard, into: shelf))

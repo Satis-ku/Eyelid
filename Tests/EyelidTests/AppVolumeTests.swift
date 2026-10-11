@@ -125,7 +125,7 @@ struct AppVolumeMixerTests {
 }
 
 @MainActor
-@Suite("Volumes of apps")
+@Suite("Volumes of apps", .timeLimit(.minutes(1)))
 struct AppVolumesTests {
     final class FakeTap: AppVolumeTapping {
         let processes: [AudioObjectID]
@@ -387,6 +387,72 @@ struct AppVolumesTests {
 
         #expect(relaunched.volume(for: music) == 0.3)
         #expect(world.made.first?.gain == 0.3)
+    }
+
+    @Test func volumesStayBetweenSilentAndFull() {
+        let volumes = makeVolumes()
+        let music = app("Music", processes: [10])
+
+        volumes.setVolume(-0.5, for: music)
+        #expect(volumes.volume(for: music) == 0)
+        volumes.setVolume(1.5, for: music)
+        #expect(volumes.volume(for: music) == 1)
+        #expect(volumes.volumes.isEmpty)
+    }
+
+    /// Losing the output, as when the last one is unplugged, takes every tap away.
+    @Test func losingTheOutputStopsTheTaps() throws {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10], isPlaying: true)]
+        volumes.setVolume(0.5, for: world.apps[0])
+        let tap = try #require(world.made.first)
+
+        world.output = nil
+        volumes.sync()
+
+        #expect(tap.isStopped)
+        #expect(volumes.taps.isEmpty)
+    }
+
+    /// What's stored is read as a build that sets it would: full volumes and flat or broken equalizers aren't kept.
+    @Test func onlySettingsThatChangeSomethingAreRead() throws {
+        store.set(["com.example.Music": 0.5, "com.example.Chat": 1.0], forKey: "appVolumes")
+        let equalizers = ["com.example.Music": EqualizerSettings(.rock), "com.example.Chat": .flat]
+        store.set(try JSONEncoder().encode(equalizers), forKey: "appEqualizers")
+
+        let volumes = makeVolumes()
+
+        #expect(volumes.volumes == ["com.example.Music": 0.5])
+        #expect(volumes.equalizers == ["com.example.Music": EqualizerSettings(.rock)])
+
+        store.set(Data("not json".utf8), forKey: "appEqualizers")
+        #expect(makeVolumes().equalizers.isEmpty)
+    }
+
+    /// Core Audio can refuse a tap: the app then plays on its own, and the next look tries again.
+    @Test func aRefusedTapIsTriedAgain() {
+        var refuses = true
+        let volumes = AppVolumes(
+            defaults: store,
+            apps: { [world] in world.apps },
+            output: { [world] in world.output },
+            makeTap: { [world] request in
+                guard !refuses else { return nil }
+                let tap = FakeTap(request)
+                world.made.append(tap)
+                return tap
+            },
+            now: { [world] in world.now },
+            checkInterval: .milliseconds(10)
+        )
+        world.apps = [app("Music", processes: [10])]
+
+        volumes.setVolume(0.5, for: world.apps[0])
+        #expect(volumes.taps.isEmpty)
+
+        refuses = false
+        volumes.sync()
+        #expect(world.made.count == 1)
     }
 
     @Test func withoutAnOutputNothingIsTapped() {

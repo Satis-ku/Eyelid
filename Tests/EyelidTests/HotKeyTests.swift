@@ -14,8 +14,10 @@ struct HotKeyTests {
     }
 
     @Test func readsLikeAMenuShortcut() {
-        #expect(HotKey.clipboardDefault.displayString == "⇧⌘V")
-        #expect(HotKey.liveActivityDefault.displayString == "⌥Z")
+        // A letter reads as the current keyboard layout has it, such as Y for Z on a German one, so only the
+        // modifiers are certain.
+        #expect(HotKey.clipboardDefault.displayString.hasPrefix("⇧⌘"))
+        #expect(HotKey.liveActivityDefault.displayString.hasPrefix("⌥"))
         let all = HotKey(keyCode: UInt32(kVK_Space), modifiers: UInt32(controlKey | optionKey | shiftKey | cmdKey))
         #expect(all.displayString == "⌃⌥⇧⌘Space")
         #expect(HotKey(keyCode: UInt32(kVK_F5), modifiers: UInt32(optionKey)).displayString == "⌥F5")

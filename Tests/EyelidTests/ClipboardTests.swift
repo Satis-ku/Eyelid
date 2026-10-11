@@ -69,8 +69,13 @@ struct ClipboardEntryTests {
 
 @MainActor
 @Suite("Clipboard history")
-struct ClipboardHistoryTests {
+final class ClipboardHistoryTests {
     private let pasteboard = NSPasteboard.withUniqueName()
+
+    isolated deinit {
+        // Named pasteboards stay in the pasteboard server until released.
+        pasteboard.releaseGlobally()
+    }
 
     private func copy(_ text: String, marker: NSPasteboard.PasteboardType? = nil) {
         let item = NSPasteboardItem()
@@ -80,6 +85,11 @@ struct ClipboardHistoryTests {
         }
         pasteboard.clearContents()
         pasteboard.writeObjects([item])
+    }
+
+    /// The entry at `index`, stopping the test, rather than the whole run, if there's none.
+    private func entry(_ index: Int, of history: ClipboardHistory) throws -> ClipboardEntry {
+        try #require(history.entries.dropFirst(index).first)
     }
 
     private func titles(_ history: ClipboardHistory) -> [String] {
@@ -154,7 +164,7 @@ struct ClipboardHistoryTests {
         copy("later")
         history.checkForChanges()
 
-        history.copy(history.entries[1])
+        history.copy(try entry(1, of: history))
 
         #expect(pasteboard.string(forType: .string) == "bold")
         #expect(pasteboard.data(forType: .rtf) == rich)
@@ -170,7 +180,7 @@ struct ClipboardHistoryTests {
             history.add(try entry(text))
         }
 
-        history.remove(history.entries[1].id)
+        history.remove(try entry(1, of: history).id)
         #expect(titles(history) == ["c", "a"])
 
         history.removeAll()
@@ -202,7 +212,7 @@ struct ClipboardHistoryTests {
             history.add(try entry(text))
         }
 
-        history.setPinned(history.entries[2].id, true)
+        history.setPinned(try entry(2, of: history).id, true)
         history.add(try entry("d"))
 
         #expect(titles(history) == ["a", "d", "c", "b"])
@@ -212,19 +222,19 @@ struct ClipboardHistoryTests {
     @Test func copyingAPinnedCopyAgainLeavesItPinned() throws {
         let history = ClipboardHistory(pasteboard: pasteboard, pinnedFile: nil)
         history.add(try entry("pinned"))
-        history.setPinned(history.entries[0].id, true)
+        history.setPinned(try entry(0, of: history).id, true)
         history.add(try entry("other"))
 
         history.add(try entry("pinned"))
 
         #expect(titles(history) == ["pinned", "other"])
-        #expect(history.entries[0].isPinned)
+        #expect(try entry(0, of: history).isPinned)
     }
 
     @Test func pinnedCopiesDontCountTowardsTheLimitAndSurviveClearing() throws {
         let history = ClipboardHistory(pasteboard: pasteboard, pinnedFile: nil)
         history.add(try entry("keep"))
-        history.setPinned(history.entries[0].id, true)
+        history.setPinned(try entry(0, of: history).id, true)
 
         for index in 0..<ClipboardHistory.maxEntries + 5 {
             history.add(try entry("\(index)"))
@@ -241,9 +251,9 @@ struct ClipboardHistoryTests {
         for text in ["a", "b"] {
             history.add(try entry(text))
         }
-        history.setPinned(history.entries[1].id, true)
+        history.setPinned(try entry(1, of: history).id, true)
 
-        history.setPinned(history.entries[0].id, false)
+        history.setPinned(try entry(0, of: history).id, false)
 
         #expect(titles(history) == ["a", "b"])
         #expect(history.pinnedCount == 0)
@@ -255,14 +265,14 @@ struct ClipboardHistoryTests {
         let history = ClipboardHistory(pasteboard: pasteboard, pinnedFile: file)
         history.add(try entry("forgotten"))
         history.add(try entry("remembered"))
-        history.setPinned(history.entries[0].id, true)
+        history.setPinned(try entry(0, of: history).id, true)
 
         let relaunched = ClipboardHistory(pasteboard: pasteboard, pinnedFile: file)
 
         #expect(titles(relaunched) == ["remembered"])
         #expect(relaunched.entries.first?.isPinned == true)
 
-        relaunched.remove(relaunched.entries[0].id)
+        relaunched.remove(try entry(0, of: relaunched).id)
         #expect(!FileManager.default.fileExists(atPath: file.path(percentEncoded: false)))
     }
 }

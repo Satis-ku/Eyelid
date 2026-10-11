@@ -93,7 +93,9 @@ final class HUDService {
         access: AccessibilityAccess = AccessibilityAccess(),
         makeTap: (@escaping @MainActor (MediaKeyPress) -> Bool) -> any KeyTap = { MediaKeyTap(handler: $0) },
         volumeWatcher: any VolumeWatching = VolumeWatcher(),
-        accessSettleDelay: Duration = .milliseconds(500)
+        accessSettleDelay: Duration = .milliseconds(500),
+        // Off in tests, which call `accessibilityListChanged` themselves: the real list can change while they run.
+        followsAccessList: Bool = true
     ) {
         self.settings = settings
         self.accessSettleDelay = accessSettleDelay
@@ -107,6 +109,7 @@ final class HUDService {
         }
         // macOS posts this whenever the Accessibility list in System Settings changes. Taking Eyelid's access away
         // while its tap runs can stall input across the Mac, so the tap stops at once, before any check.
+        guard followsAccessList else { return }
         accessListObserver = DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name("com.apple.accessibility.api"),
             object: nil,
