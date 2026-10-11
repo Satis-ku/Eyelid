@@ -9,8 +9,20 @@ struct SoundPanel: View {
 
     /// The slider's value while it's dragged, so reading the volume back doesn't fight it.
     @State private var level: Float = 0
+    /// The app whose equalizer shows in place of the outputs and apps.
+    @State private var equalizing: AudioApp?
 
     var body: some View {
+        if let app = equalizing {
+            AppEqualizerPanel(app: app, appVolumes: appVolumes) {
+                equalizing = nil
+            }
+        } else {
+            mixer
+        }
+    }
+
+    private var mixer: some View {
         VStack(spacing: 8) {
             volumeRow
             HStack(alignment: .top, spacing: 14) {
@@ -36,7 +48,9 @@ struct SoundPanel: View {
                             .padding(.horizontal, 8)
                     }
                     ForEach(sound.apps.prefix(NotchViewModel.Layout.soundMaxRows)) { app in
-                        AudioAppRow(app: app, appVolumes: appVolumes)
+                        AudioAppRow(app: app, appVolumes: appVolumes) {
+                            equalizing = app
+                        }
                     }
                 }
             }

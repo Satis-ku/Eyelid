@@ -4,6 +4,8 @@ import SwiftUI
 struct AudioAppRow: View {
     let app: AudioApp
     let appVolumes: AppVolumes
+    /// Opens the app's equalizer.
+    let equalize: @MainActor () -> Void
     @State private var isHovered = false
 
     var body: some View {
@@ -42,6 +44,17 @@ struct AudioAppRow: View {
                         appVolumes.sync()
                     }
                 }
+
+                Button(action: equalize) {
+                    Image(systemName: "slider.vertical.3")
+                        .font(.system(size: 11, weight: .semibold))
+                        // Lit while the app has an equalizer of its own.
+                        .foregroundStyle(.white.opacity(appVolumes.equalizer(for: app).isFlat ? 0.45 : 1))
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityLabel("Equalizer for \(app.name)")
             }
         }
         .padding(.horizontal, 8)
