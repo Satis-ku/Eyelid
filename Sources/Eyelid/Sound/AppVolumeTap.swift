@@ -15,8 +15,15 @@ final class AppVolumeTap: @unchecked Sendable {
     /// The output the sound goes to.
     let outputUID: String
 
-    /// The gain, from 0 to 1, set from the main thread and read on Core Audio's.
+    /// The gain, from 0 to 1: the volume, less the equalizer's headroom. Set from the main thread and read on Core
+    /// Audio's.
     private let gain: OSAllocatedUnfairLock<Float>
+    /// Only touched on the main thread, to work out `gain`.
+    private var volume: Float
+    private var headroom: Float
+    /// The app's equalizer, once the aggregate's sample rate is known.
+    private var equalizer: EqualizerFilter?
+    private var equalizerSettings: EqualizerSettings
     /// The gain the last buffer ended at. A change ramps across one buffer, rather than click. Only touched on Core
     /// Audio's IO thread.
     private var appliedGain: Float
@@ -27,12 +34,22 @@ final class AppVolumeTap: @unchecked Sendable {
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var procID: AudioDeviceIOProcID?
 
-    /// Starts playing the app at `gain`, or returns nil if Core Audio refuses.
-    init?(processes: [AudioObjectID], output: AudioDeviceID, outputUID: String, gain: Float) {
+    /// Starts playing the app at `gain`, through `equalizer`, or returns nil if Core Audio refuses.
+    init?(
+        processes: [AudioObjectID],
+        output: AudioDeviceID,
+        outputUID: String,
+        gain: Float,
+        equalizer: EqualizerSettings = .flat
+    ) {
         self.processes = processes
         self.outputUID = outputUID
-        self.gain = OSAllocatedUnfairLock(initialState: gain)
-        appliedGain = gain
+        volume = gain
+        headroom = equalizer.headroom
+        equalizerSettings = equalizer
+        let effective = gain * equalizer.headroom
+        self.gain = OSAllocatedUnfairLock(initialState: effective)
+        appliedGain = effective
         guard start(output: output) else {
             stop()
             return nil
@@ -44,7 +61,16 @@ final class AppVolumeTap: @unchecked Sendable {
     }
 
     func setGain(_ value: Float) {
-        gain.withLock { $0 = min(max(value, 0), 1) }
+        volume = min(max(value, 0), 1)
+        let effective = volume * headroom
+        gain.withLock { $0 = effective }
+    }
+
+    func setEqualizer(_ settings: EqualizerSettings) {
+        equalizerSettings = settings
+        headroom = settings.headroom
+        equalizer?.setGains(settings.gains)
+        setGain(volume)
     }
 
     private func start(output: AudioDeviceID) -> Bool {
@@ -79,6 +105,11 @@ final class AppVolumeTap: @unchecked Sendable {
             logger.error("Could not create the aggregate device: \(status, privacy: .public)")
             return false
         }
+        let sampleRate: Float64 = AudioProperty.value(
+            AudioProperty.address(kAudioDevicePropertyNominalSampleRate),
+            of: aggregateID
+        ) ?? 48_000
+        equalizer = EqualizerFilter(sampleRate: sampleRate, gains: equalizerSettings.gains)
 
         // No dispatch queue: the block runs on Core Audio's real-time IO thread, as playback must. Through a queue the
         // output came late whenever the main thread was busy, such as redrawing the slider, and the sound stuttered.
@@ -116,14 +147,23 @@ final class AppVolumeTap: @unchecked Sendable {
     /// Copies the app's sound to the output at the gain. Runs on Core Audio's IO thread.
     private func render(_ input: UnsafePointer<AudioBufferList>, into output: UnsafeMutablePointer<AudioBufferList>) {
         let target = gain.withLockUnchecked { $0 }
+        let outputs = UnsafeMutableAudioBufferListPointer(output)
         AppVolumeMixer.render(
             UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input)),
             skippingChannels: deviceInputChannels,
-            into: UnsafeMutableAudioBufferListPointer(output),
+            into: outputs,
             from: appliedGain,
             to: target
         )
         appliedGain = target
+        if let equalizer {
+            equalizer.update()
+            let frames = AppVolumeMixer.frameCount(outputs)
+            for channel in 0..<min(EqualizerFilter.channels, AppVolumeMixer.channelCount(outputs)) {
+                guard let (samples, stride) = AppVolumeMixer.channel(channel, of: outputs) else { continue }
+                equalizer.process(samples, stride: stride, frames: frames, channel: channel)
+            }
+        }
     }
 
     private static func channelCount(of device: AudioDeviceID, scope: AudioObjectPropertyScope) -> Int {
@@ -183,12 +223,12 @@ enum AppVolumeMixer {
         }
     }
 
-    private static func channelCount(_ list: UnsafeMutableAudioBufferListPointer) -> Int {
+    static func channelCount(_ list: UnsafeMutableAudioBufferListPointer) -> Int {
         list.reduce(0) { $0 + Int(max($1.mNumberChannels, 1)) }
     }
 
     /// Frames in the list: the fewest any buffer holds.
-    private static func frameCount(_ list: UnsafeMutableAudioBufferListPointer) -> Int {
+    static func frameCount(_ list: UnsafeMutableAudioBufferListPointer) -> Int {
         var frames = Int.max
         for buffer in list {
             let channels = Int(max(buffer.mNumberChannels, 1))
@@ -198,7 +238,7 @@ enum AppVolumeMixer {
     }
 
     /// The first sample of a channel, counting across buffers, and the step to the next frame's.
-    private static func channel(
+    static func channel(
         _ index: Int,
         of list: UnsafeMutableAudioBufferListPointer
     ) -> (UnsafeMutablePointer<Float>, Int)? {

@@ -10,6 +10,7 @@ protocol AppVolumeTapping: AnyObject {
     var processes: [AudioObjectID] { get }
     var outputUID: String { get }
     func setGain(_ value: Float)
+    func setEqualizer(_ settings: EqualizerSettings)
     func stop()
 }
 
@@ -32,6 +33,7 @@ final class AppVolumes {
         let output: AudioDeviceID
         let outputUID: String
         let gain: Float
+        let equalizer: EqualizerSettings
     }
 
     /// Whether this Mac can tap apps: macOS 14.2 and later.
@@ -41,6 +43,8 @@ final class AppVolumes {
 
     /// Volumes below full, by app. Apps at full volume aren't listed, and play as they do without Eyelid.
     private(set) var volumes: [String: Float]
+    /// Equalizers that aren't flat, by app. An app with one plays through a tap, as one turned down does.
+    private(set) var equalizers: [String: EqualizerSettings]
 
     /// Whether every app playing goes through a tap, at full volume unless turned down. On while the equalizer
     /// follows the sound, since macOS shows the recording indicator then anyway. A tap stays `quietGrace` after its
@@ -71,6 +75,7 @@ final class AppVolumes {
     @ObservationIgnored let quietGrace: Duration
 
     private static let key = "appVolumes"
+    private static let equalizersKey = "appEqualizers"
 
     init(
         defaults: any SettingsStore = UserDefaults.standard,
@@ -90,6 +95,30 @@ final class AppVolumes {
         self.quietGrace = quietGrace
         let stored = defaults.object(forKey: Self.key) as? [String: Double] ?? [:]
         volumes = stored.mapValues(Float.init).filter { $0.value < 1 }
+        equalizers = (defaults.object(forKey: Self.equalizersKey) as? Data)
+            .flatMap { try? JSONDecoder().decode([String: EqualizerSettings].self, from: $0) }?
+            .filter { !$0.value.isFlat } ?? [:]
+    }
+
+    func equalizer(for app: AudioApp) -> EqualizerSettings {
+        equalizers[app.volumeKey] ?? .flat
+    }
+
+    /// Sets an app's equalizer. A flat one is forgotten, and the app plays as it does without Eyelid once it's quiet.
+    func setEqualizer(_ settings: EqualizerSettings, for app: AudioApp) {
+        let key = app.volumeKey
+        equalizers[key] = settings.isFlat ? nil : settings
+        defaults.set(try? JSONEncoder().encode(equalizers), forKey: Self.equalizersKey)
+        if let tap = taps[key] {
+            tap.setEqualizer(settings)
+        } else if !settings.isFlat {
+            sync()
+        }
+    }
+
+    /// Whether an app needs a tap for its own settings, whatever else plays.
+    private func hasOwnSettings(_ key: String) -> Bool {
+        volumes[key] != nil || equalizers[key] != nil
     }
 
     func volume(for app: AudioApp) -> Float {
@@ -145,7 +174,7 @@ final class AppVolumes {
             if app.isPlaying {
                 lastHeard[key] = now
             }
-            if volumes[key] != nil || (routesPlayingApps && app.isPlaying) {
+            if hasOwnSettings(key) || (routesPlayingApps && app.isPlaying) {
                 wanted[key] = app
             } else if taps[key] != nil, app.isPlaying || isInGrace(key, at: now) {
                 kept[key] = app
@@ -161,7 +190,13 @@ final class AppVolumes {
             taps[key] = nil
         }
         for (key, app) in wanted where taps[key] == nil {
-            let request = Request(processes: app.processes, output: device, outputUID: uid, gain: volumes[key] ?? 1)
+            let request = Request(
+                processes: app.processes,
+                output: device,
+                outputUID: uid,
+                gain: volumes[key] ?? 1,
+                equalizer: equalizers[key] ?? .flat
+            )
             if let tap = makeTap(request) {
                 taps[key] = tap
                 logger.debug("Playing \(app.name, privacy: .public) through Eyelid")
@@ -238,7 +273,8 @@ final class AppVolumes {
             processes: request.processes,
             output: request.output,
             outputUID: request.outputUID,
-            gain: request.gain
+            gain: request.gain,
+            equalizer: request.equalizer
         )
     }
 }

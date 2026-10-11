@@ -116,10 +116,17 @@ struct AppVolumesTests {
             processes = request.processes
             outputUID = request.outputUID
             gain = request.gain
+            equalizer = request.equalizer
         }
+
+        var equalizer: EqualizerSettings
 
         func setGain(_ value: Float) {
             gain = value
+        }
+
+        func setEqualizer(_ settings: EqualizerSettings) {
+            equalizer = settings
         }
 
         func stop() {
@@ -313,5 +320,50 @@ struct AppVolumesTests {
         volumes.setVolume(0.5, for: world.apps[0])
 
         #expect(world.made.isEmpty)
+    }
+
+    // MARK: - Equalizers
+
+    @Test func anEqualizerPlaysTheAppThroughATap() throws {
+        let volumes = makeVolumes()
+        let music = app("Music", processes: [10])
+        world.apps = [music]
+
+        volumes.setEqualizer(EqualizerSettings(.bassBoost), for: music)
+
+        let tap = try #require(world.made.first)
+        #expect(tap.equalizer == EqualizerSettings(.bassBoost))
+        #expect(tap.gain == 1)
+    }
+
+    @Test func aFlatEqualizerIsForgotten() {
+        let volumes = makeVolumes()
+        let music = app("Music", processes: [10])
+        world.apps = [music]
+
+        volumes.setEqualizer(.flat, for: music)
+
+        #expect(world.made.isEmpty)
+        #expect(volumes.equalizers.isEmpty)
+    }
+
+    @Test func equalizersAreKept() {
+        let music = app("Music", processes: [10])
+        makeVolumes().setEqualizer(EqualizerSettings(.vocal), for: music)
+
+        #expect(makeVolumes().equalizer(for: music) == EqualizerSettings(.vocal))
+    }
+
+    @Test func changingTheEqualizerOfATappedAppKeepsItsTap() throws {
+        let volumes = makeVolumes()
+        let music = app("Music", processes: [10], isPlaying: true)
+        world.apps = [music]
+        volumes.setVolume(0.5, for: music)
+        let tap = try #require(world.made.first)
+
+        volumes.setEqualizer(EqualizerSettings(.rock), for: music)
+
+        #expect(world.made.count == 1)
+        #expect(tap.equalizer == EqualizerSettings(.rock))
     }
 }
