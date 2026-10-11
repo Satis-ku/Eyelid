@@ -26,7 +26,9 @@ struct NowPlayingCard: View {
 
                 Spacer(minLength: 8)
 
-                PlaybackProgressView(track: track)
+                PlaybackProgressView(track: track) { position in
+                    nowPlaying.seek(to: position)
+                }
 
                 PlaybackControls(isPlaying: track.isPlaying) { command in
                     nowPlaying.send(command)
@@ -116,31 +118,107 @@ struct ArtworkView: View {
     }
 }
 
+/// The track's progress, which a click or a drag moves, as in Control Center. The seek goes once the pointer lets go,
+/// and the bar stays where it went while the player catches up.
 struct PlaybackProgressView: View {
     let track: NowPlayingTrack
+    let seek: @MainActor (TimeInterval) -> Void
+
+    /// Where the pointer has dragged to, while it does.
+    @State private var dragged: TimeInterval?
+    /// The last seek, and when it was asked for.
+    @State private var sought: Seek?
+    @State private var isHovered = false
+
+    struct Seek {
+        let position: TimeInterval
+        let at: Date
+    }
+
+    /// How long a seek shows before the bar goes back to what the player reports: one that can't seek reports
+    /// nothing new, and the bar shouldn't stay where it never went.
+    static let seekGrace: TimeInterval = 2
+    /// How far VoiceOver's adjustments move.
+    private static let step: TimeInterval = 10
 
     var body: some View {
         if let duration = track.duration, duration > 0 {
             TimelineView(.periodic(from: .now, by: 0.5)) { context in
-                let elapsed = track.elapsedTime(at: context.date) ?? 0
+                let elapsed = Self.position(at: context.date, of: track, dragged: dragged, sought: sought)
 
                 HStack(spacing: 8) {
                     Text(Self.format(elapsed))
-                    GeometryReader { proxy in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(.white.opacity(0.2))
-                            Capsule().fill(.white.opacity(0.9))
-                                .frame(width: proxy.size.width * min(elapsed / duration, 1))
-                        }
-                    }
-                    .frame(height: 4)
+                    bar(elapsed: elapsed, duration: duration)
                     Text("-" + Self.format(duration - elapsed))
                 }
                 .font(.system(size: 10, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.55))
             }
             .frame(height: 14)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Playback position")
+            .accessibilityValue(
+                "\(Self.format(Self.position(at: .now, of: track, dragged: nil, sought: sought))) of \(Self.format(duration))"
+            )
+            .accessibilityAdjustableAction { direction in
+                let now = Self.position(at: .now, of: track, dragged: nil, sought: sought)
+                switch direction {
+                case .increment: go(to: now + Self.step, of: duration)
+                case .decrement: go(to: now - Self.step, of: duration)
+                @unknown default: break
+                }
+            }
         }
+    }
+
+    private func bar(elapsed: TimeInterval, duration: TimeInterval) -> some View {
+        GeometryReader { proxy in
+            let isActive = isHovered || dragged != nil
+            let width = max(proxy.size.width, 1)
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(.white.opacity(isActive ? 0.28 : 0.2))
+                Capsule()
+                    .fill(.white.opacity(isActive ? 1 : 0.9))
+                    .frame(width: proxy.size.width * min(elapsed / duration, 1))
+            }
+            .frame(height: isActive ? 7 : 4)
+            .frame(maxHeight: .infinity)
+            // The whole row's height takes the pointer, not only the thin bar.
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        dragged = min(max(value.location.x / width, 0), 1) * duration
+                    }
+                    .onEnded { value in
+                        go(to: min(max(value.location.x / width, 0), 1) * duration, of: duration)
+                        dragged = nil
+                    }
+            )
+            .onHover { isHovered = $0 }
+            .animation(.easeOut(duration: 0.12), value: isActive)
+        }
+    }
+
+    private func go(to position: TimeInterval, of duration: TimeInterval) {
+        let position = min(max(position, 0), duration)
+        sought = Seek(position: position, at: .now)
+        seek(position)
+    }
+
+    /// Where the bar is: where it's dragged to, or where a seek went until the player reports that, for a moment at
+    /// most, or else where the player says it is.
+    static func position(at date: Date, of track: NowPlayingTrack, dragged: TimeInterval?, sought: Seek?) -> TimeInterval {
+        if let dragged {
+            return dragged
+        }
+        if let sought, date.timeIntervalSince(sought.at) < seekGrace, (track.timestamp ?? .distantPast) < sought.at {
+            let played = track.isPlaying ? date.timeIntervalSince(sought.at) * track.playbackRate : 0
+            return min(sought.position + max(played, 0), track.duration ?? .infinity)
+        }
+        return track.elapsedTime(at: date) ?? 0
     }
 
     static func format(_ interval: TimeInterval) -> String {

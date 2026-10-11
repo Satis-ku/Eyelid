@@ -90,3 +90,65 @@ struct NowPlayingTrackTests {
         #expect(PlaybackProgressView.format(seconds) == expected)
     }
 }
+
+@MainActor
+@Suite("Seeking")
+struct SeekingTests {
+    private let reportedAt = Date(timeIntervalSince1970: 1_000_000)
+
+    /// Playing, 30 s in as of `reportedAt`, 200 s long.
+    private func track(reportedAt: Date? = nil, isPlaying: Bool = true) -> NowPlayingTrack {
+        NowPlayingTrack(
+            title: "Track",
+            artist: "",
+            album: "",
+            isPlaying: isPlaying,
+            playbackRate: 1,
+            duration: 200,
+            elapsedTime: 30,
+            timestamp: reportedAt ?? self.reportedAt,
+            artwork: nil,
+            appName: nil,
+            appIcon: nil
+        )
+    }
+
+    private func position(
+        after seconds: TimeInterval,
+        of track: NowPlayingTrack,
+        dragged: TimeInterval? = nil,
+        sought: PlaybackProgressView.Seek? = nil
+    ) -> TimeInterval {
+        PlaybackProgressView.position(at: reportedAt.addingTimeInterval(seconds), of: track, dragged: dragged, sought: sought)
+    }
+
+    @Test func theBarFollowsADrag() {
+        #expect(position(after: 1, of: track(), dragged: 150) == 150)
+    }
+
+    /// The player takes a moment to report a seek, and the bar doesn't jump back meanwhile.
+    @Test func aSeekShowsUntilThePlayerReportsIt() {
+        let sought = PlaybackProgressView.Seek(position: 120, at: reportedAt.addingTimeInterval(10))
+
+        #expect(position(after: 10.5, of: track(), sought: sought) == 120.5)
+        #expect(position(after: 10.5, of: track(isPlaying: false), sought: sought) == 120)
+
+        // The player reports where it is now.
+        var reported = track(reportedAt: reportedAt.addingTimeInterval(10.4))
+        reported.elapsedTime = 120
+        #expect(abs(position(after: 10.5, of: reported, sought: sought) - 120.1) < 0.001)
+    }
+
+    /// A player that can't seek reports nothing new: the bar goes back to where it really is.
+    @Test func aSeekThePlayerIgnoresIsForgotten() {
+        let sought = PlaybackProgressView.Seek(position: 120, at: reportedAt.addingTimeInterval(10))
+
+        let later = 10 + PlaybackProgressView.seekGrace
+        #expect(position(after: later, of: track(), sought: sought) == 30 + later)
+    }
+
+    @Test func theAdapterTakesWholeMicroseconds() {
+        #expect(MediaRemoteAdapter.micros(83.25) == 83_250_000)
+        #expect(MediaRemoteAdapter.micros(-4) == 0)
+    }
+}
