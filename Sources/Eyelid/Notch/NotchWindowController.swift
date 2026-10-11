@@ -318,7 +318,8 @@ final class NotchWindowController {
         let pointer = NSEvent.mouseLocation
         // The equalizer takes clicks, for the Sound tab, rather than opening the notch on hover.
         let isOverEqualizer = model.equalizerRect?.contains(pointer) == true
-        if model.state == .closed {
+        // On every mouse move, so set only when it changes: each set goes to the window server.
+        if model.state == .closed, panel.ignoresMouseEvents == isOverEqualizer {
             panel.ignoresMouseEvents = !isOverEqualizer
         }
         if isOverEqualizer != model.isHoveringEqualizer {
@@ -389,8 +390,12 @@ final class NotchWindowController {
         // While the cursor is over the panel, global monitors go quiet, so poll to notice it leaving.
         pollTask?.cancel()
         pollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(100))
+            while true {
+                do {
+                    try await Task.sleep(for: .milliseconds(100))
+                } catch {
+                    return
+                }
                 self?.updateHover()
             }
         }

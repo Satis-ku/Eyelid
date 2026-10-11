@@ -90,9 +90,14 @@ final class ClipboardHistory {
         guard isOn else { return }
 
         lastChangeCount = pasteboard.changeCount
+        // Nothing is read once the history is turned off, not even what was copied a moment before.
         monitorTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(500))
+            while true {
+                do {
+                    try await Task.sleep(for: .milliseconds(500), tolerance: .milliseconds(100))
+                } catch {
+                    return
+                }
                 self?.checkForChanges()
             }
         }

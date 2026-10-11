@@ -19,20 +19,27 @@ final class SoundControl {
     /// While the slider is dragged, reading the volume back would make it jump.
     var isAdjusting = false
 
-    /// Reads everything again. Cheap: a few Core Audio queries.
+    /// Reads everything again. Cheap: a few Core Audio queries. Only what changed is set, so the panel redraws only
+    /// then, and app icons load only for apps new to the list.
     func refresh() {
-        devices = OutputDevice.all()
-        let playing = AudioApps.playing()
+        update(\.devices, to: OutputDevice.all())
+        let playing = AudioApps.all().filter(\.isPlaying)
         if playing != apps {
-            apps = playing
+            apps = AudioApps.withIcons(playing, from: apps)
         }
-        defaultDeviceID = AudioProperty.defaultOutputDevice().flatMap(OutputDevice.init(audioDevice:))?.id
+        update(\.defaultDeviceID, to: AudioProperty.defaultOutputDevice().flatMap(OutputDevice.init(audioDevice:))?.id)
         guard !isAdjusting else { return }
         if let (_, state) = SystemVolume.read() {
-            volume = state
-            canSetVolume = true
+            update(\.volume, to: state)
+            update(\.canSetVolume, to: true)
         } else {
-            canSetVolume = false
+            update(\.canSetVolume, to: false)
+        }
+    }
+
+    private func update<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<SoundControl, Value>, to value: Value) {
+        if self[keyPath: keyPath] != value {
+            self[keyPath: keyPath] = value
         }
     }
 

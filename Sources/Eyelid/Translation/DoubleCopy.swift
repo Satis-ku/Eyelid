@@ -49,8 +49,12 @@ final class DoubleCopyWatcher {
 
         lastChangeCount = pasteboard.changeCount
         watchTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: Self.interval)
+            while true {
+                do {
+                    try await Task.sleep(for: Self.interval, tolerance: Self.interval / 4)
+                } catch {
+                    return
+                }
                 self?.check(at: .now)
             }
         }
