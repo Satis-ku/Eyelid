@@ -48,14 +48,15 @@ struct ClosedActivityView: View {
     var audioLevels: AudioLevels? = nil
     /// The pointer is over the equalizer, which takes clicks: it lights up a little.
     var isEqualizerHovered = false
-    /// A click on the equalizer opens the Sound tab.
+    /// A click on the equalizer opens the Sound section.
     var openSound: @MainActor () -> Void = {}
 
     var body: some View {
         let sideWidth = NotchViewModel.Layout.activitySideWidth
 
         HStack(spacing: 0) {
-            ArtworkView(artwork: track.artwork, appIcon: nil, size: notchSize.height - 12, cornerRadius: 5)
+            // The player's icon when there's no artwork: a placeholder this small can hardly be seen.
+            ArtworkView(artwork: track.artwork ?? track.appIcon, appIcon: nil, size: notchSize.height - 12, cornerRadius: 5)
                 .frame(width: sideWidth)
             Spacer()
                 .frame(width: notchSize.width)
@@ -194,43 +195,22 @@ private struct ControlButton: View {
     }
 }
 
-/// The notch's buttons: they grow a little under the pointer, with a spring, and shrink when pressed.
-struct PressableButtonStyle: ButtonStyle {
-    /// How much the button grows under the pointer. Rows across the notch don't, and light up instead.
-    var hoverScale: CGFloat = 1.1
-
-    func makeBody(configuration: Configuration) -> some View {
-        PressableButton(configuration: configuration, hoverScale: hoverScale)
-    }
-}
-
-private struct PressableButton: View {
-    let configuration: ButtonStyleConfiguration
-    let hoverScale: CGFloat
-    @State private var isHovered = false
-
-    var body: some View {
-        configuration.label
-            .opacity(configuration.isPressed ? 0.6 : 1)
-            .scaleEffect(configuration.isPressed ? 0.88 : (isHovered ? hoverScale : 1))
-            .onHover { isHovered = $0 }
-            .animation(.spring(response: 0.28, dampingFraction: 0.6), value: isHovered)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
-    }
-}
-
 struct EqualizerView: View {
     let isPlaying: Bool
     /// The sound itself, one level a bar from 0 to 1, when Eyelid listens to it. Otherwise the bars move on their own.
     var audioLevels: AudioLevels? = nil
 
     private let speeds: [Double] = [5.1, 6.7, 4.3, 7.9]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if let levels = audioLevels?.levels, isPlaying {
             bars(speeds.indices.map { index in
                 3 + 11 * CGFloat(levels.indices.contains(index) ? levels[index] : 0)
             })
+        } else if reduceMotion {
+            // Bars that stand still, at heights that still read as sound.
+            bars(isPlaying ? [8, 12, 6, 10] : [3, 3, 3, 3])
         } else {
             TimelineView(.animation(minimumInterval: 1.0 / 24, paused: !isPlaying)) { context in
                 let time = context.date.timeIntervalSinceReferenceDate

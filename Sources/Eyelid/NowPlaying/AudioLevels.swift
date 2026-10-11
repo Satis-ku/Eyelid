@@ -32,10 +32,6 @@ final class AudioLevels {
     /// Silence this long, while something plays, means Eyelid isn't allowed to hear it.
     static let silenceTimeout: Duration = .seconds(2)
 
-    static var isSupported: Bool {
-        if #available(macOS 14.2, *) { true } else { false }
-    }
-
     init(settings: AppSettings, nowPlaying: NowPlayingService) {
         self.settings = settings
         self.nowPlaying = nowPlaying
@@ -71,8 +67,10 @@ final class AudioLevels {
         settings.showsLiveActivity && !settings.isLiveActivityHidden && !isDisplayAsleep
     }
 
+    /// Not for a muted preview either, which reports playing but sends no sound, and doesn't show the equalizer.
     private var shouldListen: Bool {
         settings.equalizerFollowsAudio && isEqualizerVisible && nowPlaying.track?.isPlaying == true
+            && !nowPlaying.isSilent
     }
 
     /// Listens while the setting is on and something plays, and not otherwise.
@@ -100,8 +98,12 @@ final class AudioLevels {
         logger.debug("Listening for the equalizer")
         silentSince = nil
         pollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1 / Self.frameRate))
+            while let interval = self?.pollInterval {
+                do {
+                    try await Task.sleep(for: interval)
+                } catch {
+                    return
+                }
                 self?.poll(tap)
             }
         }
@@ -120,9 +122,15 @@ final class AudioLevels {
         levels = nil
     }
 
+    /// A frame of the bars, or less often while all that's heard is silence and the bars move on their own.
+    private var pollInterval: Duration {
+        levels == nil && silentSince != nil ? .milliseconds(250) : .seconds(1 / Self.frameRate)
+    }
+
     @available(macOS 14.2, *)
     private func poll(_ tap: SystemAudioTap) {
-        let heard = tap.levels.withLock { $0 }.map { Double($0) }
+        // Copied inside the lock, so the tap never has to copy the array it writes to.
+        let heard = tap.levels.withLock { $0.map(Double.init) }
         if heard.allSatisfy({ $0 == 0 }) {
             let now = ContinuousClock.now
             let since = silentSince ?? now

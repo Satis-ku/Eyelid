@@ -25,9 +25,12 @@ final class VolumeWatcher: VolumeWatching {
     private var quietUntil: ContinuousClock.Instant?
     private var deviceListeners: [(address: AudioObjectPropertyAddress, block: AudioObjectPropertyListenerBlock)] = []
     private var outputListener: AudioObjectPropertyListenerBlock?
+    /// A listener the HAL queued already still runs after `stop`, so each checks this first.
+    private var isRunning = false
 
     func start() {
-        guard outputListener == nil else { return }
+        guard !isRunning else { return }
+        isRunning = true
         let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             MainActor.assumeIsolated {
                 self?.followDefaultOutput()
@@ -41,6 +44,7 @@ final class VolumeWatcher: VolumeWatching {
     }
 
     func stop() {
+        isRunning = false
         if let outputListener {
             var address = AudioProperty.address(kAudioHardwarePropertyDefaultOutputDevice)
             AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &address, .main, outputListener)
@@ -50,6 +54,7 @@ final class VolumeWatcher: VolumeWatching {
     }
 
     private func followDefaultOutput(isSwitch: Bool = true) {
+        guard isRunning else { return }
         let current = AudioProperty.defaultOutputDevice()
         guard current != device else { return }
         detach()
@@ -85,7 +90,7 @@ final class VolumeWatcher: VolumeWatching {
     }
 
     private func volumeChanged() {
-        guard let (device, state) = SystemVolume.read(), device == self.device, state != lastState else { return }
+        guard isRunning, let (device, state) = SystemVolume.read(), device == self.device, state != lastState else { return }
         lastState = state
         if let quietUntil, ContinuousClock.now < quietUntil {
             return

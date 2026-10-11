@@ -100,6 +100,13 @@ jobs:
             fi
           done
 
+          # Stripped: debug symbols would carry the runner's paths.
+          symbols="$(nm -ap "${binaries[0]}")"
+          if [[ "$symbols" == *" OSO "* ]]; then
+            echo "::error::Eyelid still has debug symbols"
+            exit 1
+          fi
+
           codesign --verify --deep --strict "$app"
           echo "Eyelid $VERSION ($(plutil -extract CFBundleVersion raw "$plist")), universal, macOS $minimum+, hardened"
 

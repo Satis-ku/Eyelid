@@ -13,15 +13,19 @@ struct SectionsSettings: View {
                 ForEach(settings.sectionOrder, id: \.self) { section in
                     row(section)
                 }
+            } header: {
+                Text("In the dock")
             } footer: {
-                Text("Drag a section onto another to move it there. The dock at the bottom of the open notch holds up to \(NotchSection.maxPinned), and every section is in the menu under the section's name beside the camera.")
+                Text("Sections turned on here are in the dock at the bottom of the open notch, and every section is in the menu under the section's name beside the camera. Drag a section onto another to move it there.")
             }
         }
         .formStyle(.grouped)
     }
 
     private func row(_ section: NotchSection) -> some View {
-        let isPinned = settings.pinnedSections.contains(section)
+        let note = note(for: section)
+        // A section that can't show isn't in the dock either. It's back there once it can.
+        let isPinned = settings.pinnedSections.contains(section) && note == nil
         let isFull = settings.pinnedSections.count >= NotchSection.maxPinned
         return HStack(spacing: 10) {
             Image(systemName: "line.3.horizontal")
@@ -36,15 +40,26 @@ struct SectionsSettings: View {
                 set: { settings.setPinned(section, $0) }
             )) {
                 Text(section.title)
-                if let note = note(for: section) {
+                if let note {
                     Text(note)
                 } else if !isPinned, isFull {
-                    Text("The dock is full. Unpin a section to make room.")
+                    Text("The dock is full. Turn a section off to make room.")
                 }
             }
-            .disabled(!isPinned && isFull)
+            .disabled(note != nil || (!isPinned && isFull))
         }
         .contentShape(Rectangle())
+        // Without a drag, as with VoiceOver.
+        .accessibilityActions {
+            if let index = settings.sectionOrder.firstIndex(of: section) {
+                if index > 0 {
+                    Button("Move Up") { settings.moveSection(section, to: settings.sectionOrder[index - 1]) }
+                }
+                if index < settings.sectionOrder.count - 1 {
+                    Button("Move Down") { settings.moveSection(section, to: settings.sectionOrder[index + 1]) }
+                }
+            }
+        }
         // Plain views drag inside a form, where a list's own reordering doesn't.
         .draggable(section.rawValue) {
             Label(section.title, systemImage: section.systemImage)

@@ -1,14 +1,24 @@
 import Observation
 
 /// Keeps a global shortcut registered while it's turned on, and follows changes to it in Settings: the clipboard
-/// history's, and the one that hides the live activity.
+/// history's, the translator's, and the one that hides the live activity.
 @MainActor
 @Observable
 final class Shortcut {
     @ObservationIgnored var onPress: (@MainActor () -> Void)?
 
-    /// Whether another app already has the shortcut, so it does nothing here.
+    /// Whether another app, or another of Eyelid's shortcuts, already has the shortcut, so it does nothing here.
     private(set) var isTaken = false
+    /// Whether it's another of Eyelid's shortcuts that has it.
+    private(set) var isTakenByEyelid = false
+
+    /// What Settings says when the shortcut does nothing, if it does.
+    var problem: String? {
+        guard isTaken else { return nil }
+        return isTakenByEyelid
+            ? "Another of Eyelid's shortcuts uses this. Choose a different one."
+            : "Another app already uses this shortcut. Choose a different one."
+    }
     /// Set while Settings records a new shortcut, so pressing the current one records it instead of acting on it.
     var isSuspended = false
 
@@ -43,11 +53,13 @@ final class Shortcut {
         }
         guard isOn else {
             isTaken = false
+            isTakenByEyelid = false
             return
         }
         registration = center.register(hotKey) { [weak self] in
             self?.onPress?()
         }
         isTaken = registration == nil
+        isTakenByEyelid = isTaken && center.isRegistered(hotKey)
     }
 }

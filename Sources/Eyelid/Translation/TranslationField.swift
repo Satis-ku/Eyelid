@@ -30,6 +30,8 @@ struct TranslationField: NSViewRepresentable {
         field.lineBreakMode = .byWordWrapping
         field.cell?.wraps = true
         field.cell?.isScrollable = false
+        // Text longer than the lines that show ends in an ellipsis rather than mid-sentence.
+        field.cell?.truncatesLastVisibleLine = true
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         // Dark, for a white caret on the black notch.
         field.appearance = NSAppearance(named: .darkAqua)
@@ -44,6 +46,13 @@ struct TranslationField: NSViewRepresentable {
             field.stringValue = text
         }
         field.wantsFocus = isTyping
+    }
+
+    /// As tall as the frame around it, which has room for as many lines as the text needs, up to three. Left to
+    /// itself, the field is one line tall, centered in that room.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: FocusingTextField, context: Context) -> CGSize? {
+        guard let width = proposal.width, let height = proposal.height else { return nil }
+        return CGSize(width: width, height: height)
     }
 
     func makeCoordinator() -> Coordinator {

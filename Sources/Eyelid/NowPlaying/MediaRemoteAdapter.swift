@@ -60,17 +60,20 @@ struct MediaRemoteAdapter: Sendable {
 
     static let environment = ["PATH": "/usr/bin:/bin"]
 
+    /// Sends a command without waiting for the adapter to finish, which takes a moment as perl starts.
     func send(_ command: Command) {
-        Task.detached(priority: .userInitiated) {
-            let process = makeProcess(arguments: ["send", String(command.rawValue)])
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            do {
-                try process.run()
-                process.waitUntilExit()
-            } catch {
-                logger.error("Failed to send command \(command.rawValue): \(error.localizedDescription)")
+        let process = makeProcess(arguments: ["send", String(command.rawValue)])
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        process.terminationHandler = { process in
+            if process.terminationStatus != 0 {
+                logger.error("Command \(command.rawValue) failed: \(process.terminationStatus)")
             }
+        }
+        do {
+            try process.run()
+        } catch {
+            logger.error("Failed to send command \(command.rawValue): \(error.localizedDescription)")
         }
     }
 }

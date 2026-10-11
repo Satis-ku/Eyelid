@@ -30,12 +30,15 @@ struct TrackTitleView: View {
         let duration = TrackTitle.duration(textWidth: line.width, pathLength: curve.length)
         let target = Self.textColor(color)
 
-        TimelineView(.animation) { context in
+        // 60 frames a second is smooth enough for text running this slowly, and half the work on a 120 Hz display.
+        TimelineView(.animation(minimumInterval: 1.0 / 60)) { context in
             let elapsed = context.date.timeIntervalSince(title.startedAt)
             let start = TrackTitle.textStart(after: elapsed, textWidth: line.width, pathLength: curve.length)
             let tint = tint(at: context.date, target: target).color
 
             Canvas { canvas, _ in
+                // Every character has the same font size, so where its baseline sits is worked out once.
+                var anchor: UnitPoint?
                 for character in line.characters {
                     guard let point = curve.point(at: start + character.offset + character.width / 2) else { continue }
                     // The character's top must clear the hardware notch.
@@ -48,15 +51,17 @@ struct TrackTitleView: View {
                             .font(.system(size: TrackTitle.fontSize, weight: character.isDetail ? .medium : .semibold))
                             .foregroundStyle(character.isDetail ? tint.opacity(0.7) : tint)
                     )
-                    let room = CGSize(width: 100, height: 100)
-                    let bounds = text.measure(in: room)
-                    let baseline = text.firstBaseline(in: room)
+                    if anchor == nil {
+                        let room = CGSize(width: 100, height: 100)
+                        let height = text.measure(in: room).height
+                        anchor = UnitPoint(x: 0.5, y: height > 0 ? text.firstBaseline(in: room) / height : 1)
+                    }
 
                     var glyph = canvas
                     glyph.opacity = opacity
                     glyph.translateBy(x: point.position.x, y: point.position.y)
                     glyph.rotate(by: .radians(point.angle))
-                    glyph.draw(text, at: .zero, anchor: UnitPoint(x: 0.5, y: bounds.height > 0 ? baseline / bounds.height : 1))
+                    glyph.draw(text, at: .zero, anchor: anchor ?? .bottom)
                 }
             }
         }

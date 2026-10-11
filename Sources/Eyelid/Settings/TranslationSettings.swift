@@ -27,8 +27,8 @@ struct TranslationSettings: View {
                     HotKeyRecorder(hotKey: $settings.translationHotKey, shortcut: shortcut)
                 } label: {
                     Text("Shortcut")
-                    if shortcut.isTaken {
-                        Text("Another app already uses this shortcut. Choose a different one.")
+                    if let problem = shortcut.problem {
+                        Text(problem)
                             .foregroundStyle(.red)
                     }
                 }
@@ -55,22 +55,17 @@ struct TranslationSettings: View {
                     Text("Translate into")
                     Text("Automatic picks your first language in Language & Region, or your next one for text already in it.")
                 }
+                .onChange(of: settings.translationTarget) {
+                    // What the notch shows comes in the new language.
+                    translator.translateNow()
+                }
             } footer: {
                 Text("Apple's Translation translates on this Mac, with the languages downloaded in System Settings → General → Language & Region → Translation Languages. Nothing is sent anywhere.")
             }
             .disabled(!translator.isAvailable)
 
             if settings.translatesOnDoubleCopy, let access, access != .allowed {
-                Section {
-                    LabeledContent {
-                        Button("Open Privacy & Security") {
-                            NSWorkspace.shared.open(ClipboardSettings.pasteboardPrivacySettings)
-                        }
-                    } label: {
-                        Text("Allow Eyelid to read what you copy")
-                        Text("Otherwise macOS asks every time. Set Eyelid to Allow under Paste from Other Apps.")
-                    }
-                }
+                PasteAccessSection(explanation: "Otherwise macOS asks every time. Set Eyelid to Allow under Paste from Other Apps.")
             }
         }
         .formStyle(.grouped)

@@ -91,6 +91,7 @@ final class HotKeyCenter {
 
     private var handlers: [Registration: @MainActor () -> Void] = [:]
     private var references: [Registration: EventHotKeyRef] = [:]
+    private var hotKeys: [Registration: HotKey] = [:]
     private var nextRegistration: Registration = 1
     private var eventHandler: EventHandlerRef?
 
@@ -150,7 +151,13 @@ final class HotKeyCenter {
 
         references[registration] = reference
         handlers[registration] = handler
+        hotKeys[registration] = hotKey
         return registration
+    }
+
+    /// Whether another of Eyelid's own shortcuts has this one.
+    func isRegistered(_ hotKey: HotKey) -> Bool {
+        hotKeys.values.contains(hotKey)
     }
 
     func unregister(_ registration: Registration) {
@@ -158,5 +165,6 @@ final class HotKeyCenter {
             UnregisterEventHotKey(reference)
         }
         handlers[registration] = nil
+        hotKeys[registration] = nil
     }
 }

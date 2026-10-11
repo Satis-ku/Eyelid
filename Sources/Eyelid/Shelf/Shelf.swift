@@ -32,11 +32,18 @@ final class Shelf {
     /// Where files that apps promise on drop are written, one subfolder per drop.
     @ObservationIgnored let promisedFilesDirectory: URL
     @ObservationIgnored private let store: any SettingsStore
+    /// Whether a disk is connected, by where it's mounted. Tests stand in for it.
+    @ObservationIgnored private let isMounted: (URL) -> Bool
     private static let storeKey = "shelfItems"
 
-    init(store: any SettingsStore = UserDefaults.standard, promisedFilesDirectory: URL = Shelf.defaultPromisedFilesDirectory) {
+    init(
+        store: any SettingsStore = UserDefaults.standard,
+        promisedFilesDirectory: URL = Shelf.defaultPromisedFilesDirectory,
+        isMounted: @escaping (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path(percentEncoded: false)) }
+    ) {
         self.store = store
         self.promisedFilesDirectory = promisedFilesDirectory
+        self.isMounted = isMounted
         items = Self.load(from: store)
         // Resolving the bookmarks finds files that were moved, renamed or deleted while Eyelid wasn't running.
         refresh()
@@ -79,24 +86,29 @@ final class Shelf {
         save()
     }
 
-    /// Follows files that were renamed or moved, and forgets the ones that were deleted or moved to the Trash.
+    /// Follows files that were renamed or moved, and forgets the ones that were deleted or moved to the Trash. Files
+    /// on a disk that isn't connected are kept for when it is.
     func refresh() {
-        let refreshed = items.compactMap(Self.resolve)
+        let refreshed = items.compactMap(resolve)
         guard refreshed != items else { return }
         items = refreshed
         save()
     }
 
-    private static func resolve(_ item: ShelfItem) -> ShelfItem? {
+    private func resolve(_ item: ShelfItem) -> ShelfItem? {
         var isStale = false
         guard let url = try? URL(
             resolvingBookmarkData: item.bookmark,
             options: [.withoutUI, .withoutMounting],
             bookmarkDataIsStale: &isStale
-        ) else { return nil }
+        ) else {
+            // The bookmark still knows the disk the file was on.
+            let volume = URL.resourceValues(forKeys: [.volumeURLKey], fromBookmarkData: item.bookmark)?.volume
+            return volume.map(isMounted) == false ? item : nil
+        }
 
         let resolved = url.standardizedFileURL
-        guard FileManager.default.fileExists(atPath: resolved.path(percentEncoded: false)), !isInTrash(resolved) else {
+        guard FileManager.default.fileExists(atPath: resolved.path(percentEncoded: false)), !Self.isInTrash(resolved) else {
             return nil
         }
 

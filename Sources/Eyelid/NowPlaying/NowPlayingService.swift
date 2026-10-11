@@ -32,6 +32,12 @@ final class NowPlayingService {
     @ObservationIgnored private var readTask: Task<Void, Never>?
     @ObservationIgnored private var artworkData: Data?
     @ObservationIgnored private var isRunning = false
+    /// How long to wait before starting the adapter again after it exits: longer each time it exits without sending
+    /// anything, so one that can't run isn't started every few seconds forever.
+    @ObservationIgnored private var restartDelay = NowPlayingService.firstRestartDelay
+    private static let firstRestartDelay: Duration = .seconds(3)
+    /// The player's name and icon, worked out again only when another app plays: drawing the icon takes a moment.
+    @ObservationIgnored private var player: (bundleIdentifier: String, name: String?, icon: NSImage?)?
     /// macOS reports a new track a moment before its artwork, and some apps resend the previous track's artwork first:
     /// Yandex Music sends none, the old one, none again, and the new one about 0.65 s after the track changed. For this
     /// long the notch keeps the previous artwork rather than blinking through those.
@@ -148,11 +154,13 @@ final class NowPlayingService {
         process = nil
         guard isRunning else { return }
 
-        logger.warning("mediaremote-adapter exited with status \(status), restarting")
+        let delay = restartDelay
+        restartDelay = min(restartDelay * 2, .seconds(60))
+        logger.warning("mediaremote-adapter exited with status \(status), restarting in \(delay)")
         track = nil
         artworkData = nil
         Task { [weak self] in
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: delay)
             guard let self, isRunning, process == nil else { return }
             launchStream()
         }
@@ -160,6 +168,8 @@ final class NowPlayingService {
 
     /// Internal rather than private for the tests.
     func apply(_ snapshot: NowPlayingSnapshot?) {
+        // The adapter works.
+        restartDelay = Self.firstRestartDelay
         guard let snapshot else {
             track = nil
             artworkData = nil
@@ -203,9 +213,7 @@ final class NowPlayingService {
             (artwork, artworkColor) = use(data, snapshot.artwork)
         }
 
-        let appURL = snapshot.appBundleIdentifier.flatMap {
-            NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
-        }
+        let app = playerApp(snapshot.appBundleIdentifier)
 
         let current = NowPlayingTrack(
             title: snapshot.title,
@@ -217,8 +225,8 @@ final class NowPlayingService {
             elapsedTime: snapshot.elapsedTime,
             timestamp: snapshot.timestamp,
             artwork: artwork,
-            appName: appURL.flatMap { FileManager.default.displayName(atPath: $0.path).replacing(".app", with: "") },
-            appIcon: appURL.flatMap { Self.standardRangeIcon(forFile: $0.path) },
+            appName: app?.name,
+            appIcon: app?.icon,
             artworkColor: artworkColor
         )
         track = current
@@ -238,6 +246,18 @@ final class NowPlayingService {
             pendingStart = nil
             isSilent = false
         }
+    }
+
+    private func playerApp(_ bundleIdentifier: String?) -> (name: String?, icon: NSImage?)? {
+        guard let bundleIdentifier else { return nil }
+        if let player, player.bundleIdentifier == bundleIdentifier {
+            return (player.name, player.icon)
+        }
+        let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
+        let name = url.map { FileManager.default.displayName(atPath: $0.path).replacing(".app", with: "") }
+        let icon = url.flatMap { StandardRangeIcons.icon(forFile: $0.path(percentEncoded: false), points: 32) }
+        player = (bundleIdentifier, name, icon)
+        return (name, icon)
     }
 
     // MARK: - Starts that are heard
@@ -260,9 +280,12 @@ final class NowPlayingService {
             return
         }
         isSilent = true
+        // Often at first, as a preview opened as a video is heard at once; then less, as a muted video can play on.
+        let started = ContinuousClock.now
         audibleTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(200))
+                let interval: Duration = .now - started < .seconds(2) ? .milliseconds(200) : .seconds(1)
+                try? await Task.sleep(for: interval)
                 guard let self, !Task.isCancelled, self.track?.isPlaying == true else { return }
                 if isAudible(sourceBundleIdentifiers) != false {
                     audibleTask = nil
@@ -347,29 +370,5 @@ final class NowPlayingService {
         artworkWait?.cancel()
         artworkWait = nil
         isAwaitingArtwork = false
-    }
-
-    /// App icons on recent macOS are 16-bit extended-range images, and a single one of them switches
-    /// SwiftUI to HDR rendering for the whole notch. A plain 8-bit sRGB copy avoids that.
-    private static func standardRangeIcon(forFile path: String) -> NSImage? {
-        let pixels = 64
-        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
-              let context = CGContext(
-                  data: nil,
-                  width: pixels,
-                  height: pixels,
-                  bitsPerComponent: 8,
-                  bytesPerRow: 0,
-                  space: colorSpace,
-                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-              )
-        else { return nil }
-
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
-        NSWorkspace.shared.icon(forFile: path).draw(in: CGRect(x: 0, y: 0, width: pixels, height: pixels))
-        NSGraphicsContext.restoreGraphicsState()
-
-        return context.makeImage().map { NSImage(cgImage: $0, size: NSSize(width: pixels / 2, height: pixels / 2)) }
     }
 }

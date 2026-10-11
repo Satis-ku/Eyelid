@@ -16,6 +16,9 @@ struct SectionTitle: View {
                 Text(section.title)
                     .font(.system(size: 12, weight: .semibold))
                     .lineLimit(1)
+                    // Beside a wider notch, such as one drawn on a display without one, "Translation" shrinks a
+                    // little rather than lose its end.
+                    .minimumScaleFactor(0.85)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(.white.opacity(0.5))
@@ -132,6 +135,8 @@ private struct SectionTile: View {
             VStack(spacing: 5) {
                 Image(systemName: systemImage)
                     .font(.system(size: 18, weight: .medium))
+                    // A fixed height, so a tall symbol such as the clipboard's doesn't push its label down.
+                    .frame(height: 22)
                 Text(title)
                     .font(.system(size: 11, weight: .medium))
                     .lineLimit(1)

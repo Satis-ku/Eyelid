@@ -53,6 +53,8 @@ struct TranslationLanguagesTests {
         ("ru-Cyrl-RU", "en-Latn-GB", "en-Latn-GB"),
         ("de-Latn-DE", "fr-Latn-FR", "fr-Latn-FR"),
         ("fr-Latn-FR", "fr-Latn-FR", "en-Latn-US"),
+        // One that can't be translated into is passed over for the user's own.
+        ("de-Latn-DE", "ja-Jpan-JP", "en-Latn-US"),
     ] as [(String, String?, String)])
     func choosesTheTarget(source: String, chosen: String?, expected: String) {
         let target = TranslationLanguages.target(
@@ -74,6 +76,22 @@ struct TranslationLanguagesTests {
         )
 
         #expect(target == nil)
+    }
+
+    @Test func nothingToTellALanguageFrom() {
+        #expect(TranslationLanguages.detect("Hello there", among: [], preferring: preferred) == nil)
+    }
+
+    /// A variant there's no translation into falls back to the language's main one.
+    @Test func anUnsupportedVariantFallsBackToTheMainOne() {
+        let target = TranslationLanguages.target(
+            for: Locale.Language(identifier: "ru-Cyrl-RU"),
+            chosen: nil,
+            among: supported,
+            preferring: [Locale.Language(identifier: "en-AU")]
+        )
+
+        #expect(target?.languageCode == "en")
     }
 
     @Test func tellsChineseScriptsApart() {
@@ -103,6 +121,11 @@ struct DoubleCopyTests {
 
     @Test func threeCopiesTranslateOnce() {
         #expect(seconds([0, 200, 400]) == [false, true, false])
+    }
+
+    @Test func theWindowEndsAtItsLastMoment() {
+        #expect(seconds([0, 600]) == [false, true])
+        #expect(seconds([0, 601]) == [false, false])
     }
 }
 
@@ -184,9 +207,14 @@ struct DoubleCopyWatcherTests {
 }
 
 @MainActor
-@Suite("Translator")
-struct TranslatorTests {
+@Suite("Translator", .timeLimit(.minutes(1)))
+final class TranslatorTests {
     private let pasteboard = NSPasteboard.withUniqueName()
+
+    isolated deinit {
+        // Named pasteboards stay in the pasteboard server until released.
+        pasteboard.releaseGlobally()
+    }
     private let settings = AppSettings(defaults: InMemorySettingsStore())
 
     private func makeTranslator(engine: TranslationEngine? = .fake()) -> Translator {
@@ -373,5 +401,97 @@ struct TranslatorTests {
 
         #expect(await calls.texts.count == 1)
         #expect(translator.request?.translation == "Good morning, how are you today?")
+    }
+
+    /// The panel asks to try again after a failure, so asking again for the same text does.
+    @Test func aFailedTranslationIsTriedAgain() async {
+        struct Broken: Error {}
+        let calls = Calls()
+        let translator = makeTranslator(engine: .fake { text, _, _ in
+            await calls.add(text)
+            if await calls.texts.count == 1 {
+                throw Broken()
+            }
+            return text
+        })
+        translator.translate("Good morning, how are you today?")
+        await translator.task?.value
+        #expect(translator.request?.outcome == .failed(.failed))
+
+        translator.translateNow()
+        await translator.task?.value
+
+        #expect(translator.request?.translation == "Good morning, how are you today?")
+    }
+
+    @Test func aNewLanguageTranslatesAgain() async {
+        let translator = makeTranslator()
+        translator.translate("Good morning, how are you today?")
+        await translator.task?.value
+
+        settings.translationTarget = Locale.Language(identifier: "de").maximalIdentifier
+        translator.translateNow()
+        await translator.task?.value
+
+        #expect(translator.request?.translation == "de: Good morning, how are you today?")
+    }
+
+    @Test func theLanguageChosenInSettingsWins() async {
+        settings.translationTarget = Locale.Language(identifier: "fr").maximalIdentifier
+        let translator = makeTranslator()
+
+        translator.translate("Good morning, how are you today?")
+        await translator.task?.value
+
+        #expect(translator.request?.target?.maximalIdentifier == "fr-Latn-FR")
+        #expect(translator.request?.translation == "fr: Good morning, how are you today?")
+    }
+
+    @Test func textInTheOnlyLanguageThereIsSaysSo() async {
+        let translator = Translator(
+            settings: settings,
+            engine: .fake(),
+            pasteboard: pasteboard,
+            preferredLanguages: { [Locale.Language(identifier: "en-US")] },
+            typingPause: .milliseconds(10)
+        )
+
+        translator.translate("Good morning, how are you today?")
+        await translator.task?.value
+
+        #expect(translator.request?.outcome == .failed(.alreadyInYourLanguage))
+    }
+
+    @Test func unsupportedLanguagesSaySo() async {
+        let translator = makeTranslator(engine: .fake(status: .unsupported))
+
+        translator.translate("Good morning, how are you today?")
+        await translator.task?.value
+
+        #expect(translator.request?.outcome == .failed(.unsupportedLanguages))
+    }
+
+    /// The engine can still find out late that languages aren't there, or can't be paired.
+    @Test(arguments: [
+        (TranslationEngine.Failure.notInstalled, Translator.Failure.languagesNotInstalled),
+        (.unsupported, .unsupportedLanguages),
+    ])
+    func failuresWhileTranslatingSaySo(thrown: TranslationEngine.Failure, shown: Translator.Failure) async {
+        let translator = makeTranslator(engine: .fake { _, _, _ in throw thrown })
+
+        translator.translate("Good morning, how are you today?")
+        await translator.task?.value
+
+        #expect(translator.request?.outcome == .failed(shown))
+    }
+
+    @Test func nothingIsCopiedBeforeThereIsATranslation() {
+        let translator = makeTranslator()
+        pasteboard.clearContents()
+        pasteboard.setString("as it was", forType: .string)
+
+        translator.copyTranslation()
+
+        #expect(pasteboard.string(forType: .string) == "as it was")
     }
 }

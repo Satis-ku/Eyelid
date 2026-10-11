@@ -1,10 +1,24 @@
+import AppKit
 import Foundation
 import Testing
 @testable import Eyelid
 
 @MainActor
 @Suite("Notch layout")
-struct NotchViewModelTests {
+final class NotchViewModelTests {
+    /// Pasteboards made for the models, released as the test ends: named ones stay in the pasteboard server.
+    private var pasteboards: [NSPasteboard] = []
+
+    isolated deinit {
+        pasteboards.forEach { $0.releaseGlobally() }
+    }
+
+    private func pasteboard() -> NSPasteboard {
+        let pasteboard = NSPasteboard.withUniqueName()
+        pasteboards.append(pasteboard)
+        return pasteboard
+    }
+
     /// A 14-inch MacBook Pro: 1512×982 points with a 185×32 notch in the middle.
     private let geometry = NotchGeometry(
         notchSize: CGSize(width: 185, height: 32),
@@ -12,17 +26,18 @@ struct NotchViewModelTests {
         screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982)
     )
 
-    private func makeModel() -> NotchViewModel {
+    private func makeModel(translation engine: TranslationEngine? = .fake()) -> NotchViewModel {
         let settings = AppSettings(defaults: InMemorySettingsStore())
-        let nowPlaying = NowPlayingService()
+        // Whether a player is heard can't be told here, so what plays is shown.
+        let nowPlaying = NowPlayingService(isAudible: { _ in nil })
         return NotchViewModel(
             geometry: geometry,
             nowPlaying: nowPlaying,
             audioLevels: AudioLevels(settings: settings, nowPlaying: nowPlaying),
             battery: BatteryService(),
             shelf: Shelf(store: InMemorySettingsStore(), promisedFilesDirectory: FileManager.default.temporaryDirectory),
-            clipboard: ClipboardHistory(pasteboard: .withUniqueName(), pinnedFile: nil),
-            translator: Translator(settings: settings, engine: .fake(), pasteboard: .withUniqueName()),
+            clipboard: ClipboardHistory(pasteboard: pasteboard(), pinnedFile: nil),
+            translator: Translator(settings: settings, engine: engine, pasteboard: pasteboard()),
             appVolumes: AppVolumes(defaults: InMemorySettingsStore(), apps: { [] }, output: { nil }, makeTap: { _ in nil }),
             settings: settings
         )
@@ -123,11 +138,26 @@ struct NotchViewModelTests {
         #expect(layout.soundFixedHeight + (rows + 1) * layout.soundRowHeight > layout.openContentHeight)
     }
 
-    @Test func equalizerIsClickableOnlyWhileItShows() {
+    @Test func equalizerIsClickableOnlyWhileItShows() throws {
         let model = makeModel()
         #expect(model.equalizerRect == nil)
 
-        model.settings.isLiveActivityHidden = false
+        let payload = try JSONDecoder().decode(
+            AdapterStreamMessage.Payload.self,
+            from: Data(#"{"title":"Song","playing":true}"#.utf8)
+        )
+        model.nowPlaying.apply(NowPlayingSnapshot(payload: payload))
+        // Right of the camera, as tall as the notch.
+        #expect(try #require(model.equalizerRect) == CGRect(
+            x: 756 + 185 / 2,
+            y: 982 - 32,
+            width: NotchViewModel.Layout.activitySideWidth,
+            height: 32
+        ))
+
+        model.hud = HUDEvent(kind: .volume, level: 0.5)
+        #expect(model.equalizerRect == nil)
+        model.hud = nil
         model.state = .open
         #expect(model.equalizerRect == nil)
     }
@@ -135,7 +165,8 @@ struct NotchViewModelTests {
     @Test func statusFitsRightOfTheCamera() {
         let model = makeModel()
 
-        #expect(model.statusWidth == (NotchViewModel.Layout.openWidth - 185) / 2 - NotchViewModel.Layout.openHorizontalPadding)
+        #expect(model.statusWidth == (NotchViewModel.Layout.openWidth - 185) / 2 - NotchViewModel.Layout.openHorizontalPadding
+            - NotchViewModel.Layout.cameraClearance)
         // Enough for "Oct 11 10:07" and the battery.
         #expect(model.statusWidth >= 115)
     }
@@ -241,15 +272,15 @@ struct NotchViewModelTests {
         #expect(!model.hoverRect.contains(belowTheNotch))
     }
 
-    @Test func shelfTabNeedsTheShelf() {
+    @Test func theShelfSectionNeedsTheShelf() {
         let model = makeModel()
-        #expect(model.tab == .nowPlaying)
+        #expect(model.selectedSection == .nowPlaying)
 
-        model.tab = .shelf
-        #expect(model.showsShelf)
+        model.selectedSection = .shelf
+        #expect(model.currentSection == .shelf)
 
         model.settings.shelfEnabled = false
-        #expect(!model.showsShelf)
+        #expect(model.currentSection == .nowPlaying)
     }
 
     @Test func filesDraggedOutTogetherAllLeaveTheShelf() throws {
@@ -287,12 +318,12 @@ struct NotchViewModelTests {
     @Test func clipboardHistoryShowsOnceItsOn() {
         let model = makeModel()
         model.state = .open
-        model.tab = .clipboard
-        #expect(!model.showsClipboard)
+        model.selectedSection = .clipboard
+        #expect(model.currentSection == .nowPlaying)
 
         model.settings.clipboardEnabled = true
 
-        #expect(model.showsClipboard)
+        #expect(model.currentSection == .clipboard)
     }
 
     @Test func clipboardSelectionStaysInTheList() throws {
@@ -405,7 +436,7 @@ struct NotchViewModelTests {
     @Test func sectionsThatAreOffAreLeftOut() {
         let model = makeModel()
         model.settings.shelfEnabled = false
-        model.tab = .shelf
+        model.selectedSection = .shelf
 
         #expect(model.sections == [.nowPlaying, .sound, .translation])
         #expect(model.currentSection == .nowPlaying)
@@ -415,25 +446,80 @@ struct NotchViewModelTests {
         let model = makeModel()
         model.state = .open
         model.settings.clipboardEnabled = true
-        model.tab = .clipboard
+        model.selectedSection = .clipboard
         model.showsSectionMenu = true
 
         model.select(.sound)
 
         #expect(!model.showsSectionMenu)
-        #expect(model.tab == .sound)
+        #expect(model.selectedSection == .sound)
     }
 
     @Test func typingNeedsTheKeyboardOnTheTranslator() {
         let model = makeModel()
         model.state = .open
-        model.tab = .translation
+        model.selectedSection = .translation
         #expect(!model.isTypingTranslation)
 
         model.isHeldOpen = true
         #expect(model.isTypingTranslation)
 
-        model.tab = .clipboard
+        model.selectedSection = .clipboard
         #expect(!model.isTypingTranslation)
+    }
+
+    /// Only the clipboard history and the translator take typing; the other sections let go of the keyboard.
+    @Test(arguments: [(NotchSection.shelf, true), (.sound, true), (.nowPlaying, true), (.translation, false), (.clipboard, false)])
+    func sectionsWithoutTypingLetGoOfTheHold(section: NotchSection, releases: Bool) {
+        let model = makeModel()
+        model.state = .open
+        model.selectedSection = .translation
+        model.isHeldOpen = true
+        var released = false
+        model.releaseHold = { released = true }
+
+        model.select(section)
+
+        #expect(released == releases)
+    }
+
+    @Test func withoutTheTranslatorTheresNoTranslationSection() {
+        let model = makeModel(translation: nil)
+        model.selectedSection = .translation
+
+        #expect(!model.sections.contains(.translation))
+        #expect(model.currentSection == .nowPlaying)
+    }
+
+    @Test func theClipboardOpensAfresh() {
+        let model = makeModel()
+        model.settings.clipboardEnabled = true
+        model.clipboardQuery = "addr"
+        model.showsClipboardPreview = true
+
+        model.select(.clipboard)
+
+        #expect(model.clipboardQuery.isEmpty)
+        #expect(!model.showsClipboardPreview)
+    }
+
+    @Test func aShelfWithFilesLooksFull() throws {
+        let model = makeModel()
+        #expect(model.systemImage(for: .shelf) == "tray")
+
+        let file = FileManager.default.temporaryDirectory.appending(path: "EyelidShelfIcon-\(UUID().uuidString).txt")
+        try Data("file".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        model.shelf.add([file])
+
+        #expect(model.systemImage(for: .shelf) == "tray.full")
+    }
+
+    /// Long enough to read, however short, and not forever, however long.
+    @Test(arguments: zip([0, 60, 1_000], [6, 8, 30] as [Int64]))
+    func translationStaysLongEnoughToRead(characters: Int, seconds: Int64) {
+        let text = String(repeating: "a", count: characters)
+
+        #expect(NotchViewModel.Layout.translationReadingTime(for: text) == .seconds(seconds))
     }
 }

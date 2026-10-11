@@ -25,6 +25,21 @@ struct EqualizerSettings: Codable, Equatable, Sendable {
         self.init(gains: preset.gains, preset: preset)
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case gains
+        case preset
+    }
+
+    /// Reads what an earlier or later build stored as well as it can: a band each, within the range, and no preset
+    /// for one this build doesn't know.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let stored = (try? container.decode([Float].self, forKey: .gains)) ?? []
+        let gains = (0..<Self.bands.count).map { stored.indices.contains($0) ? stored[$0] : 0 }
+        let preset = try? container.decodeIfPresent(EqualizerPreset.self, forKey: .preset)
+        self.init(gains: gains, preset: gains == preset?.gains ? preset : nil)
+    }
+
     var isFlat: Bool {
         gains.allSatisfy { $0 == 0 }
     }
@@ -119,20 +134,30 @@ final class EqualizerFilter: @unchecked Sendable {
     /// The most frames a buffer has. Core Audio's buffers are far shorter.
     static let maxFrames = 8_192
 
-    private let sampleRate: Double
+    /// Only touched on the main thread, to work out coefficients.
+    private var sampleRate: Double
+    private var gains: [Float]
     private let sections = vDSP_Length(EqualizerSettings.bands.count)
     private let setup: vDSP_biquad_Setup
     /// Each channel's filter state: 2 values a section and 2 more.
     private let delays: [UnsafeMutablePointer<Float>]
     private let scratch: UnsafeMutablePointer<Float>
     private let coefficients: UnsafeMutablePointer<Double>
-    /// New gains waiting for the IO thread, set from the main thread.
-    private let pending = OSAllocatedUnfairLock<[Double]?>(initialState: nil)
+    /// New gains waiting for the IO thread, set from the main thread. The IO thread only copies them out: the array
+    /// stays here, so it's never released, or freed, on that thread.
+    private struct Pending {
+        var coefficients: [Double]
+        /// Whether any band is off 0 dB. A 0 dB band's coefficients aren't zeros, so this comes from the gains.
+        var isActive: Bool
+        var isNew = false
+    }
+    private let pending: OSAllocatedUnfairLock<Pending>
     /// Only touched on the IO thread.
     private var isActive = false
 
     init?(sampleRate: Double, gains: [Float]) {
         self.sampleRate = sampleRate
+        self.gains = gains
         let initial = Biquad.equalizer(gains, sampleRate: sampleRate)
         let count = vDSP_Length(EqualizerSettings.bands.count)
         guard let setup = initial.withUnsafeBufferPointer({ vDSP_biquad_CreateSetup($0.baseAddress!, count) }) else {
@@ -148,7 +173,9 @@ final class EqualizerFilter: @unchecked Sendable {
         scratch = .allocate(capacity: Self.maxFrames)
         coefficients = .allocate(capacity: initial.count)
         coefficients.initialize(from: initial, count: initial.count)
-        isActive = !gains.allSatisfy { $0 == 0 }
+        let active = !gains.allSatisfy { $0 == 0 }
+        isActive = active
+        pending = OSAllocatedUnfairLock(initialState: Pending(coefficients: initial, isActive: active))
     }
 
     deinit {
@@ -160,23 +187,38 @@ final class EqualizerFilter: @unchecked Sendable {
 
     /// Takes new gains, from the main thread.
     func setGains(_ gains: [Float]) {
-        let new = Biquad.equalizer(gains, sampleRate: sampleRate)
+        self.gains = gains
+        let new = Pending(
+            coefficients: Biquad.equalizer(gains, sampleRate: sampleRate),
+            isActive: !gains.allSatisfy { $0 == 0 },
+            isNew: true
+        )
+        // The array this replaces is released here, on the main thread.
         pending.withLock { $0 = new }
+    }
+
+    /// Works the bands out again for the output's new sample rate, from the main thread, so they stay where they are.
+    func setSampleRate(_ rate: Double) {
+        guard rate != sampleRate, rate > 0 else { return }
+        sampleRate = rate
+        setGains(gains)
     }
 
     /// Takes up new gains, if any came, before a buffer. On the IO thread; if the main thread holds the lock, the gains
     /// wait for the next buffer rather than the sound for the lock.
     func update() {
-        let new = pending.withLockIfAvailable { pending -> [Double]? in
-            defer { pending = nil }
-            return pending
-        } ?? nil
-        guard let new else { return }
         let wasActive = isActive
-        isActive = stride(from: 0, to: new.count, by: 5).contains { new[$0] != 1 || new[$0 + 1] != 0 || new[$0 + 2] != 0 }
-        for index in new.indices {
-            coefficients[index] = new[index]
-        }
+        let coefficients = coefficients
+        let active = pending.withLockIfAvailableUnchecked { pending -> Bool? in
+            guard pending.isNew else { return nil }
+            pending.isNew = false
+            pending.coefficients.withUnsafeBufferPointer { new in
+                coefficients.update(from: new.baseAddress!, count: new.count)
+            }
+            return pending.isActive
+        } ?? nil
+        guard let active else { return }
+        isActive = active
         vDSP_biquad_SetCoefficientsDouble(setup, coefficients, 0, sections)
         if isActive, !wasActive {
             // Old state from before a pause in filtering would pop.

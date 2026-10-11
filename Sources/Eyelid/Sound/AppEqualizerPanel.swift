@@ -14,17 +14,19 @@ struct AppEqualizerPanel: View {
         VStack(spacing: 8) {
             header
             HStack(alignment: .bottom, spacing: 0) {
-                VStack(alignment: .trailing) {
-                    Text("+12")
-                    Spacer()
-                    Text("0")
-                    Spacer()
-                    Text("−12")
+                // Each centered on its place on the tracks, which run from +12 at the top to −12 at the bottom.
+                GeometryReader { proxy in
+                    ForEach([("+12", 0.0), ("0", 0.5), ("−12", 1.0)], id: \.0) { text, fraction in
+                        Text(text)
+                            .frame(width: proxy.size.width, alignment: .trailing)
+                            .position(x: proxy.size.width / 2, y: proxy.size.height * fraction)
+                    }
                 }
                 .font(.system(size: 9, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.35))
+                .foregroundStyle(.white.opacity(0.5))
                 .frame(width: 24)
                 .padding(.bottom, 16)
+                .accessibilityHidden(true)
 
                 ForEach(EqualizerSettings.bands.indices, id: \.self) { band in
                     VStack(spacing: 4) {
@@ -36,11 +38,12 @@ struct AppEqualizerPanel: View {
                                 new.preset = nil
                                 appVolumes.setEqualizer(EqualizerSettings(gains: new.gains), for: app)
                             }
-                        ), label: Self.label(for: EqualizerSettings.bands[band]))
+                        ), name: Self.spokenName(for: EqualizerSettings.bands[band]))
                         Text(Self.label(for: EqualizerSettings.bands[band]))
                             .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.45))
+                            .foregroundStyle(.white.opacity(0.5))
                             .frame(height: 12)
+                            .accessibilityHidden(true)
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -94,11 +97,16 @@ struct AppEqualizerPanel: View {
             .buttonStyle(.plain)
             .fixedSize()
             .accessibilityLabel("Preset")
+            .accessibilityValue(settings.preset?.title ?? (settings.isFlat ? EqualizerPreset.flat.title : "Custom"))
         }
     }
 
     private static func label(for frequency: Double) -> String {
         frequency >= 1_000 ? "\(Int(frequency / 1_000))K" : "\(Int(frequency))"
+    }
+
+    private static func spokenName(for frequency: Double) -> String {
+        frequency >= 1_000 ? "\(Int(frequency / 1_000)) kilohertz" : "\(Int(frequency)) hertz"
     }
 }
 
@@ -106,7 +114,8 @@ struct AppEqualizerPanel: View {
 /// a click anywhere on it.
 private struct BandSlider: View {
     @Binding var gain: Float
-    let label: String
+    /// The band, as VoiceOver reads it.
+    let name: String
     @State private var isDragging = false
     @State private var isHovered = false
 
@@ -140,7 +149,11 @@ private struct BandSlider: View {
                         let raw = min(max(fraction, -1), 1) * Self.range.upperBound
                         // Half-decibel steps, and 0 dB is easy to land on.
                         let stepped = (raw * 2).rounded() / 2
-                        gain = abs(stepped) < 0.75 ? 0 : stepped
+                        let new = abs(stepped) < 0.75 ? 0 : stepped
+                        // Only a new step is saved and sent to the sound, not every move of the pointer.
+                        if new != gain {
+                            gain = new
+                        }
                     }
                     .onEnded { _ in
                         isDragging = false
@@ -151,7 +164,7 @@ private struct BandSlider: View {
             .animation(.easeOut(duration: 0.12), value: isHovered)
         }
         .accessibilityElement()
-        .accessibilityLabel("\(label) hertz")
+        .accessibilityLabel(name)
         .accessibilityValue("\(gain.formatted(.number.precision(.fractionLength(0...1)))) decibels")
         .accessibilityAdjustableAction { direction in
             switch direction {

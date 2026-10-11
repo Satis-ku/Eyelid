@@ -18,7 +18,7 @@ final class FakeVolumeWatcher: VolumeWatching {
 }
 
 @MainActor
-@Suite("Accessibility access for the HUD")
+@Suite("Accessibility access for the HUD", .timeLimit(.minutes(1)))
 struct HUDAccessTests {
     /// Stands in for System Settings.
     final class Permission {
@@ -62,7 +62,8 @@ struct HUDAccessTests {
             ),
             makeTap: { _ in tap },
             volumeWatcher: FakeVolumeWatcher(),
-            accessSettleDelay: .milliseconds(10)
+            accessSettleDelay: .milliseconds(10),
+            followsAccessList: false
         )
     }
 
@@ -158,7 +159,8 @@ struct HUDVolumeElsewhereTests {
             settings: AppSettings(defaults: InMemorySettingsStore()),
             access: AccessibilityAccess(isGranted: { true }, request: {}),
             makeTap: { _ in HUDAccessTests.FakeTap(permission: HUDAccessTests.Permission()) },
-            volumeWatcher: watcher
+            volumeWatcher: watcher,
+            followsAccessList: false
         )
     }
 

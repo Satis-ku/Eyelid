@@ -13,7 +13,7 @@ struct AudioApp: Identifiable, Equatable {
     let name: String
     let bundleIdentifier: String?
     let bundleURL: URL?
-    let icon: NSImage?
+    var icon: NSImage?
     /// Core Audio's objects for the app's processes with sound: the app's own, its helpers', or both.
     var processes: [AudioObjectID] = []
     /// Whether any of them is sending sound to an output right now.
@@ -32,16 +32,21 @@ struct AudioApp: Identifiable, Equatable {
 /// Which apps are sending sound right now, as Core Audio sees it (macOS 14.2 and later). No permission is needed: it
 /// says which apps play, not what.
 enum AudioApps {
-    /// The apps playing, by name, with Eyelid and the system's own services left out. Empty before macOS 14.2.
+    /// The apps with their icons, taken from `known` for apps already there, since loading one takes a while.
     @MainActor
-    static func playing() -> [AudioApp] {
-        all(withIcons: true).filter(\.isPlaying)
+    static func withIcons(_ apps: [AudioApp], from known: [AudioApp] = []) -> [AudioApp] {
+        apps.map { app in
+            var app = app
+            app.icon = known.first { $0.id == app.id }?.icon
+                ?? app.bundleURL.flatMap { StandardRangeIcons.icon(forFile: $0.path(percentEncoded: false), points: 18) }
+            return app
+        }
     }
 
-    /// Every app with a process Core Audio knows, playing or not, by name. Icons take a while to load, so only what
-    /// shows them asks for them.
+    /// Every app with a process Core Audio knows, playing or not, by name, without icons. Eyelid and the system's own
+    /// services are left out. Empty before macOS 14.2.
     @MainActor
-    static func all(withIcons: Bool = false) -> [AudioApp] {
+    static func all() -> [AudioApp] {
         guard #available(macOS 14.2, *) else { return [] }
         let objects: [AudioObjectID] = AudioProperty.array(
             AudioProperty.address(kAudioHardwarePropertyProcessObjectList),
@@ -69,7 +74,7 @@ enum AudioApps {
                 name: name,
                 bundleIdentifier: app.bundleIdentifier,
                 bundleURL: app.bundleURL,
-                icon: withIcons ? app.icon : nil
+                icon: nil
             )
         }
     }

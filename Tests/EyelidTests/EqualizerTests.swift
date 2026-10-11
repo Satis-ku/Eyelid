@@ -30,7 +30,10 @@ struct EqualizerTests {
 
     /// The level of a sine after the filter, in decibels against before.
     private func gain(at frequency: Double, gains: [Float], sampleRate: Double = 48_000) throws -> Double {
-        let filter = try #require(EqualizerFilter(sampleRate: sampleRate, gains: gains))
+        gain(at: frequency, through: try #require(EqualizerFilter(sampleRate: sampleRate, gains: gains)), sampleRate: sampleRate)
+    }
+
+    private func gain(at frequency: Double, through filter: EqualizerFilter, sampleRate: Double) -> Double {
         let frames = 4_096
         var samples = (0..<frames).map { Float(sin(2 * .pi * frequency * Double($0) / sampleRate)) }
         // Several buffers, so the filter settles.
@@ -55,6 +58,51 @@ struct EqualizerTests {
         #expect(abs(try gain(at: 440, gains: EqualizerSettings.flat.gains)) < 0.01)
     }
 
+    /// A 0 dB band's coefficients aren't zeros, so whether to filter comes from the gains.
+    @Test func flatGainsSetLaterStopFiltering() throws {
+        let filter = try #require(EqualizerFilter(sampleRate: 48_000, gains: EqualizerPreset.rock.gains))
+        filter.setGains(EqualizerSettings.flat.gains)
+        filter.update()
+        var samples = (0..<512).map { Float(sin(Double($0) * 0.3)) }
+        let original = samples
+
+        filter.process(&samples, stride: 1, frames: samples.count, channel: 0)
+
+        #expect(samples == original)
+    }
+
+    @Test func gainsSetLaterAreTakenUp() throws {
+        let filter = try #require(EqualizerFilter(sampleRate: 48_000, gains: EqualizerSettings.flat.gains))
+        var gains = EqualizerSettings.flat.gains
+        gains[5] = 6
+        filter.setGains(gains)
+        filter.update()
+        var samples = (0..<512).map { Float(sin(2 * .pi * 1_000 * Double($0) / 48_000)) }
+        let original = samples
+
+        filter.process(&samples, stride: 1, frames: samples.count, channel: 0)
+
+        #expect(samples != original)
+    }
+
+    /// AirPods drop their sample rate for a call: the bands stay at their frequencies.
+    @Test func aNewSampleRateKeepsTheBandsWhereTheyAre() throws {
+        var gains = EqualizerSettings.flat.gains
+        gains[5] = 6
+        let filter = try #require(EqualizerFilter(sampleRate: 48_000, gains: gains))
+
+        filter.setSampleRate(24_000)
+        filter.update()
+
+        #expect(abs(gain(at: 1_000, through: filter, sampleRate: 24_000) - 6) < 0.3)
+    }
+
+    @Test func bandsAboveWhatTheRateHoldsAreLeftAlone() {
+        let coefficients = Biquad.equalizer(EqualizerPreset.trebleBoost.gains, sampleRate: 22_050)
+
+        #expect(Array(coefficients.suffix(5)) == [1, 0, 0, 0, 0])
+    }
+
     @Test func boostsGetHeadroomSoNothingClips() {
         let settings = EqualizerSettings(gains: [6, 0, 0, 0, 0, 0, 0, 0, 0, -3])
 
@@ -73,5 +121,22 @@ struct EqualizerTests {
     func presetsHaveEveryBandInRange(_ preset: EqualizerPreset) {
         #expect(preset.gains.count == EqualizerSettings.bands.count)
         #expect(preset.gains.allSatisfy(EqualizerSettings.range.contains))
+    }
+
+    @Test func storedSettingsComeBackAsTheyWere() throws {
+        let settings = EqualizerSettings(.vocal)
+        let data = try JSONEncoder().encode(settings)
+
+        #expect(try JSONDecoder().decode(EqualizerSettings.self, from: data) == settings)
+    }
+
+    /// Another build may store other bands or presets: what fits is kept, and nothing is lost to what doesn't.
+    @Test func storedSettingsFromAnotherBuildAreMadeToFit() throws {
+        let json = #"{"gains": [20, 3, 3], "preset": "someFuturePreset"}"#
+
+        let settings = try JSONDecoder().decode(EqualizerSettings.self, from: Data(json.utf8))
+
+        #expect(settings.gains == [12, 3, 3, 0, 0, 0, 0, 0, 0, 0])
+        #expect(settings.preset == nil)
     }
 }

@@ -6,6 +6,9 @@ struct HUDView: View {
     let style: LevelStyle
     let notchSize: CGSize
 
+    /// As wide as the speaker with all its waves.
+    static let iconWidth: CGFloat = 22
+
     var body: some View {
         let sideWidth = NotchViewModel.Layout.hudSideWidth
 
@@ -14,6 +17,8 @@ struct HUDView: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white.opacity(event.dimsIcon ? 0.4 : 1))
                 .contentTransition(.symbolEffect(.replace))
+                // The speaker's waves grow to the right, so the speaker itself stays put as the level changes.
+                .frame(width: Self.iconWidth, alignment: event.hasWaves ? .leading : .center)
                 .frame(width: sideWidth)
             Spacer()
                 .frame(width: notchSize.width)
@@ -21,6 +26,9 @@ struct HUDView: View {
                 .frame(width: sideWidth)
         }
         .frame(height: notchSize.height)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(event.kind == .volume ? "Volume" : "Brightness")
+        .accessibilityValue(event.isMuted ? "Muted" : "\(Int((event.level * 100).rounded())) percent")
     }
 }
 

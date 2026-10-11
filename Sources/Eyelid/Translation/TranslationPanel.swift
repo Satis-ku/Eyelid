@@ -7,9 +7,12 @@ struct TranslationPanel: View {
     /// Whether the field has the keyboard. The notch takes it only once the field is clicked, so the app in front
     /// keeps it until then.
     let isTyping: Bool
+    /// Whether ⌘C twice translates, which the empty panel then says.
+    let translatesOnDoubleCopy: Bool
     let beginTyping: @MainActor () -> Void
     @State private var didCopy = false
     @State private var isFieldHovered = false
+    @State private var hasTextCursor = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: TranslationLayout.spacing) {
@@ -17,6 +20,8 @@ struct TranslationPanel: View {
             field
             if let request = translator.request {
                 outcome(request)
+            } else {
+                hint
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -25,7 +30,8 @@ struct TranslationPanel: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text(translator.request?.languages ?? "Translation")
+            // Empty until there's something to translate: the section's title above says what this is.
+            Text(translator.request?.languages ?? "")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.5))
             Spacer()
@@ -70,11 +76,11 @@ struct TranslationPanel: View {
         .onHover { isHovered in
             isFieldHovered = isHovered
             // A text cursor, as over any field, though the click lands on the overlay.
-            if isHovered {
-                NSCursor.iBeam.push()
-            } else {
-                NSCursor.pop()
-            }
+            setTextCursor(isHovered)
+        }
+        // The field can go while the pointer is on it, as the notch closes, which ends no hover.
+        .onDisappear {
+            setTextCursor(false)
         }
         .animation(.easeOut(duration: 0.15), value: isFieldHovered)
         .overlay {
@@ -83,8 +89,38 @@ struct TranslationPanel: View {
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture(perform: beginTyping)
+                    .accessibilityElement()
+                    .accessibilityLabel("Text to translate")
+                    .accessibilityValue(translator.input)
+                    .accessibilityHint("Starts typing")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { beginTyping() }
             }
         }
+    }
+
+    /// Pushes the text cursor once, and pops only what it pushed.
+    private func setTextCursor(_ isOn: Bool) {
+        guard isOn != hasTextCursor else { return }
+        hasTextCursor = isOn
+        if isOn {
+            NSCursor.iBeam.push()
+        } else {
+            NSCursor.pop()
+        }
+    }
+
+    private var hint: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Return translates right away; otherwise it's once you stop typing.")
+            if translatesOnDoubleCopy {
+                Text("Press ⌘C twice in any app to translate what's selected.")
+            }
+            Text("Apple's Translation translates on this Mac. Nothing is sent anywhere.")
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(.white.opacity(0.45))
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     @ViewBuilder
@@ -138,6 +174,14 @@ struct TranslationPanel: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollIndicators(.automatic)
+        // A long translation fades out at the bottom, rather than stop mid-line, so it reads as going on.
+        .mask {
+            VStack(spacing: 0) {
+                Color.black
+                LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 12)
+            }
+        }
     }
 }
 
@@ -163,9 +207,14 @@ enum TranslationLayout {
     static func inputHeight(_ input: String) -> CGFloat {
         let font = NSFont.systemFont(ofSize: inputSize)
         let line = lineHeight(font)
-        let text = textHeight(input, font: font, width: width - 2 * inputPadding.width)
+        // Measured only as far as fills the lines that show, since this runs whenever the panel redraws, and a text
+        // copied twice can be long.
+        let text = textHeight(String(input.prefix(measuredLength)), font: font, width: width - 2 * inputPadding.width)
         return min(max(text, line), line * CGFloat(inputLines))
     }
+
+    /// More than fills `inputLines` lines at the field's width.
+    private static let measuredLength = 500
 
     private static func textHeight(_ text: String, font: NSFont, width: CGFloat) -> CGFloat {
         let bounds = NSAttributedString(string: text, attributes: [.font: font]).boundingRect(
@@ -181,9 +230,9 @@ enum TranslationLayout {
 }
 
 extension Translator.Request {
-    /// "English → Russian", once the languages are known.
+    /// "English → Russian", once the languages are known, and empty until then.
     var languages: String {
-        guard let source, let target else { return "Translation" }
+        guard let source, let target else { return "" }
         return "\(TranslationLanguages.name(of: source)) → \(TranslationLanguages.name(of: target))"
     }
 
@@ -216,16 +265,12 @@ extension Translator.Failure {
     var settings: (title: String, url: URL)? {
         switch self {
         case .pasteDenied:
-            ("Open Privacy & Security", ClipboardSettings.pasteboardPrivacySettings)
+            ("Open Privacy & Security", SystemSettingsPage.pasteFromOtherApps)
         case .languagesNotInstalled:
-            ("Open Language & Region", TranslationLayout.languageSettings)
+            ("Open Language & Region", SystemSettingsPage.languageAndRegion)
         default:
             nil
         }
     }
 }
 
-extension TranslationLayout {
-    /// System Settings → General → Language & Region, where Translation Languages are downloaded.
-    static let languageSettings = URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension")!
-}

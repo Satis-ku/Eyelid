@@ -9,11 +9,10 @@ final class NotchViewModel {
         case open
     }
 
-    /// What the open notch shows below the strip beside the hardware notch.
-    typealias Tab = NotchSection
-
     enum Layout {
         static let openWidth: CGFloat = 470
+        /// Room left free on each side of the camera in the open notch, so nothing there touches it.
+        static let cameraClearance: CGFloat = 6
         /// Room between the open notch's content and its sides.
         static let openHorizontalPadding: CGFloat = 18
         /// Room below the open notch's content.
@@ -66,7 +65,8 @@ final class NotchViewModel {
     }
 
     var state: State = .closed
-    var tab: Tab = .nowPlaying
+    /// The section chosen last. `currentSection` is the one that shows, as this one may be turned off.
+    var selectedSection: NotchSection = .nowPlaying
     var geometry: NotchGeometry
     /// The volume or brightness after a key press. Shown in place of everything else.
     var hud: HUDEvent?
@@ -108,16 +108,19 @@ final class NotchViewModel {
     let appVolumes: AppVolumes
     let settings: AppSettings
     @ObservationIgnored let shelfDragSource = ShelfDragSource()
-    /// The volume and outputs, for the Sound tab.
+    /// The volume and outputs, for the Sound section.
     let sound = SoundControl()
     /// Whether the pointer is over the equalizer beside the closed notch, which it then highlights.
     var isHoveringEqualizer = false
-    /// Opens the notch on the Sound tab. Set by the window controller, which owns opening.
+    /// Opens the notch on the Sound section. Set by the window controller, which owns opening.
     @ObservationIgnored var openSound: @MainActor () -> Void = {}
     /// Gives the translation's text field the keyboard, after a click on it. Set by the window controller.
     @ObservationIgnored var typeTranslation: @MainActor () -> Void = {}
     /// Set by the window controller, which owns opening and closing.
     @ObservationIgnored var close: @MainActor () -> Void = {}
+    /// Gives the keyboard back to the app in front and lets the notch follow the pointer again. Set by the window
+    /// controller, which owns the keyboard.
+    @ObservationIgnored var releaseHold: @MainActor () -> Void = {}
     /// Presses ⌘V in the app in front. Set by the window controller, which knows when it has the keyboard back.
     @ObservationIgnored var pasteIntoFrontApp: @MainActor () -> Void = {}
 
@@ -146,23 +149,6 @@ final class NotchViewModel {
         }
     }
 
-    /// Whether the open notch shows the shelf rather than now playing.
-    var showsShelf: Bool {
-        settings.shelfEnabled && tab == .shelf
-    }
-
-    var showsClipboard: Bool {
-        settings.clipboardEnabled && tab == .clipboard
-    }
-
-    var showsSound: Bool {
-        tab == .sound
-    }
-
-    var showsTranslation: Bool {
-        tab == .translation && translator.isAvailable
-    }
-
     /// The sections there are, in the user's order: the shelf and the clipboard history only while they're on, and
     /// the translator on Macs that can translate.
     var sections: [NotchSection] {
@@ -183,15 +169,19 @@ final class NotchViewModel {
 
     /// The section the open notch shows: the chosen one, or Now Playing when that one is off.
     var currentSection: NotchSection {
-        sections.contains(tab) ? tab : .nowPlaying
+        sections.contains(selectedSection) ? selectedSection : .nowPlaying
     }
 
-    /// Shows a section, and puts the menu of all sections away.
+    /// Shows a section, and puts the menu of all sections away. Only the clipboard history and the translator take
+    /// typing, so the others let go of the keyboard and the hold.
     func select(_ section: NotchSection) {
         if section == .clipboard {
             resetClipboard()
         }
-        tab = section
+        if isHeldOpen, section != .clipboard, section != .translation {
+            releaseHold()
+        }
+        selectedSection = section
         showsSectionMenu = false
     }
 
@@ -202,7 +192,7 @@ final class NotchViewModel {
 
     /// Whether the translation's text field has the keyboard, which holds the notch open.
     var isTypingTranslation: Bool {
-        state == .open && isHeldOpen && tab == .translation
+        state == .open && isHeldOpen && currentSection == .translation
     }
 
     /// The clipboard entries that match what's been typed.
@@ -302,7 +292,7 @@ final class NotchViewModel {
     }
 
     /// The equalizer right of the closed notch, in global coordinates, while it shows. Hovering it doesn't open the
-    /// notch, and clicking it opens the Sound tab.
+    /// notch, and clicking it opens the Sound section.
     var equalizerRect: CGRect? {
         guard state == .closed, showsNowPlayingActivity, hud == nil, output == nil, batteryEvent == nil else { return nil }
         let notch = geometry.notchSize
@@ -314,9 +304,10 @@ final class NotchViewModel {
         )
     }
 
-    /// Room right of the camera in the open notch, for the date, time and battery.
+    /// Room on each side of the camera in the open notch: for the section on the left, and the date, time and
+    /// battery on the right.
     var statusWidth: CGFloat {
-        (Layout.openWidth - geometry.notchSize.width) / 2 - Layout.openHorizontalPadding
+        (Layout.openWidth - geometry.notchSize.width) / 2 - Layout.openHorizontalPadding - Layout.cameraClearance
     }
 
     /// Size of the notch body, excluding the ears.

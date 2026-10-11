@@ -122,6 +122,11 @@ private struct GeneralSettings: View {
                             Text(screen.localizedName).tag(NotchDisplays.display(id))
                         }
                     }
+                    if case .display(let id) = settings.notchDisplays,
+                       !NSScreen.screens.contains(where: { $0.displayID == id }) {
+                        // The chosen display is unplugged: the notch is on another one until it's back.
+                        Text("Display not connected").tag(settings.notchDisplays)
+                    }
                 } label: {
                     Text("Display")
                     Text("Automatic follows the pointer from display to display. Displays without a notch get one drawn at the top.")
@@ -172,11 +177,11 @@ private struct NowPlayingSettings: View {
 
                 Toggle(isOn: $settings.equalizerFollowsAudio) {
                     Text("Equalizer follows the sound")
-                    Text(AudioLevels.isSupported
+                    Text(AudioProperty.canTapProcesses
                         ? "macOS asks to allow Eyelid to record system audio, and shows the recording indicator while it listens. Eyelid only measures how loud each pitch is, and keeps nothing."
                         : "Needs macOS 14.2 or later.")
                 }
-                .disabled(!AudioLevels.isSupported || !settings.showsLiveActivity)
+                .disabled(!AudioProperty.canTapProcesses || !settings.showsLiveActivity)
 
                 Toggle(isOn: $settings.showsTrackTitle) {
                     Text("Track title")
@@ -194,8 +199,8 @@ private struct NowPlayingSettings: View {
                     HotKeyRecorder(hotKey: $settings.liveActivityHotKey, shortcut: shortcut)
                 } label: {
                     Text("Shortcut")
-                    if shortcut.isTaken {
-                        Text("Another app already uses this shortcut. Choose a different one.")
+                    if let problem = shortcut.problem {
+                        Text(problem)
                             .foregroundStyle(.red)
                     }
                 }
@@ -320,7 +325,9 @@ private struct AboutSettings: View {
             Section {
                 LabeledContent("Version", value: Self.version)
                 LabeledContent("License", value: "GNU GPL v3")
-                Link("Source code on GitHub", destination: URL(string: "https://github.com/Satis-ku/Eyelid")!)
+                LabeledContent("Source code") {
+                    Link("Open on GitHub", destination: URL(string: "https://github.com/Satis-ku/Eyelid")!)
+                }
             }
 
             Section {

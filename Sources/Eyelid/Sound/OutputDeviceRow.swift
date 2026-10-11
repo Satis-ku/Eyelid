@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// One output in the Sound tab: its icon, name and headphone charge, with a check on the one in use.
+/// One output in the Sound section: its icon, name and headphone charge, with a check on the one in use.
 struct OutputDeviceRow: View {
     let device: OutputDevice
     let icon: DeviceIcon
+    let batteryLevel: Int?
     let isSelected: Bool
     let select: @MainActor () -> Void
     @State private var isHovered = false
@@ -18,11 +19,10 @@ struct OutputDeviceRow: View {
                 Text(device.name)
                     .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
                     .foregroundStyle(.white.opacity(isSelected ? 1 : 0.75))
+                    // Long names end in an ellipsis at the same size as the others, rather than shrink.
                     .lineLimit(1)
-                    // A column is half the notch wide: names like "MacBook Pro Speakers" shrink a little first.
-                    .minimumScaleFactor(0.8)
                 Spacer(minLength: 4)
-                if let level = HeadphonesBattery.current(for: device)?.level {
+                if let level = batteryLevel {
                     Text("\(level)%")
                         .font(.system(size: 10, weight: .medium).monospacedDigit())
                         .foregroundStyle(level <= 20 ? .red : .white.opacity(0.5))
@@ -44,6 +44,7 @@ struct OutputDeviceRow: View {
         .onHover { isHovered = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovered)
         .accessibilityLabel(device.name)
+        .accessibilityValue(batteryLevel.map { "\($0) percent charged" } ?? "")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
