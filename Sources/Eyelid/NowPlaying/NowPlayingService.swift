@@ -23,7 +23,7 @@ final class NowPlayingService {
     /// Whether an app is sending any sound, by its bundle identifiers. Nil when that can't be told.
     @ObservationIgnored private let isAudible: @MainActor ([String]) -> Bool?
     /// Waits for what started to be heard, since a muted preview reports playing too.
-    @ObservationIgnored private var audibleTask: Task<Void, Never>?
+    @ObservationIgnored private(set) var audibleTask: Task<Void, Never>?
     /// The bundle identifiers of what reported the track, from the latest update.
     @ObservationIgnored private var sourceBundleIdentifiers: [String] = []
 
@@ -38,7 +38,8 @@ final class NowPlayingService {
     @ObservationIgnored let artworkGrace: TimeInterval
     /// Whether the artwork of a new track is on its way. Until then the previous artwork, and its colors, stay.
     private(set) var isAwaitingArtwork = false
-    @ObservationIgnored private var artworkWait: Task<Void, Never>?
+    /// Ends when the wait does; tests wait on it.
+    @ObservationIgnored private(set) var artworkWait: Task<Void, Never>?
     /// The artwork shown when the track changed. Getting it again doesn't end the wait.
     @ObservationIgnored private var replacedArtworkData: Data?
     /// What the latest update brought, which stays when the wait runs out.
@@ -49,7 +50,8 @@ final class NowPlayingService {
     @ObservationIgnored let earlyTitleWait: TimeInterval
     /// The latest of those updates, applied if the rest doesn't come.
     @ObservationIgnored private var earlyTitle: NowPlayingSnapshot?
-    @ObservationIgnored private var earlyTitleTask: Task<Void, Never>?
+    /// Ends when the wait for the rest does; tests wait on it.
+    @ObservationIgnored private(set) var earlyTitleTask: Task<Void, Never>?
 
     init(
         artworkGrace: TimeInterval = 1,

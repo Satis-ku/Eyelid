@@ -61,7 +61,8 @@ struct HUDAccessTests {
                 request: { permission.requests += 1 }
             ),
             makeTap: { _ in tap },
-            volumeWatcher: FakeVolumeWatcher()
+            volumeWatcher: FakeVolumeWatcher(),
+            accessSettleDelay: .milliseconds(10)
         )
     }
 
@@ -75,7 +76,7 @@ struct HUDAccessTests {
     }
 
     /// Taking access away while the tap runs can stall input across the Mac, so any change to the list stops it first.
-    @Test func stopsAtOnceWhenTheAccessibilityListChanges() async throws {
+    @Test func stopsAtOnceWhenTheAccessibilityListChanges() async {
         permission.isGranted = true
         hud.setEnabled(true)
         #expect(tap.isRunning)
@@ -84,18 +85,18 @@ struct HUDAccessTests {
         hud.accessibilityListChanged()
 
         #expect(!tap.isRunning)
-        try await Task.sleep(for: HUDService.accessSettleDelay + .milliseconds(200))
+        await hud.accessListTask?.value
         #expect(!tap.isRunning)
     }
 
-    @Test func startsAgainIfAccessStayedAfterTheListChanged() async throws {
+    @Test func startsAgainIfAccessStayedAfterTheListChanged() async {
         permission.isGranted = true
         hud.setEnabled(true)
 
         hud.accessibilityListChanged()
 
         #expect(!tap.isRunning)
-        try await Task.sleep(for: HUDService.accessSettleDelay + .milliseconds(200))
+        await hud.accessListTask?.value
         #expect(tap.isRunning)
     }
 

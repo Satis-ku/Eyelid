@@ -179,7 +179,7 @@ struct ShelfDropTests {
                 continuation.resume()
             }
         }
-        for _ in 0..<50 where shelf.items.isEmpty {
+        for _ in 0..<200 where shelf.items.isEmpty {
             try await Task.sleep(for: .milliseconds(10))
         }
 

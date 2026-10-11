@@ -35,7 +35,8 @@ struct NowPlayingCard: View {
 struct ClosedActivityView: View {
     let track: NowPlayingTrack
     let notchSize: CGSize
-    var levels: [Double]? = nil
+    /// Read by the equalizer alone, which redraws with every level, so the rest of the notch doesn't.
+    var audioLevels: AudioLevels? = nil
     /// The pointer is over the equalizer, which takes clicks: it lights up a little.
     var isEqualizerHovered = false
     /// A click on the equalizer opens the Sound tab.
@@ -50,13 +51,13 @@ struct ClosedActivityView: View {
             Spacer()
                 .frame(width: notchSize.width)
             Button(action: openSound) {
-                EqualizerView(isPlaying: track.isPlaying, levels: levels)
+                EqualizerView(isPlaying: track.isPlaying, audioLevels: audioLevels)
                     .scaleEffect(isEqualizerHovered ? 1.15 : 1)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 6)
                     .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(.white.opacity(isEqualizerHovered ? 0.16 : 0))
+                        .white.opacity(isEqualizerHovered ? 0.16 : 0),
+                        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
                     )
                     .frame(width: sideWidth, height: notchSize.height)
                     .contentShape(Rectangle())
@@ -147,17 +148,27 @@ struct PlaybackControls: View {
 
     var body: some View {
         HStack(spacing: 28) {
-            ControlButton(systemImage: "backward.fill", size: 14) { send(.previousTrack) }
-            ControlButton(systemImage: isPlaying ? "pause.fill" : "play.fill", size: 20) { send(.togglePlayPause) }
-            ControlButton(systemImage: "forward.fill", size: 14) { send(.nextTrack) }
+            ControlButton("Previous Track", systemImage: "backward.fill", size: 14) { send(.previousTrack) }
+            ControlButton(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill", size: 20) {
+                send(.togglePlayPause)
+            }
+            ControlButton("Next Track", systemImage: "forward.fill", size: 14) { send(.nextTrack) }
         }
     }
 }
 
 private struct ControlButton: View {
+    let title: LocalizedStringKey
     let systemImage: String
     let size: CGFloat
     let action: @MainActor () -> Void
+
+    init(_ title: LocalizedStringKey, systemImage: String, size: CGFloat, action: @escaping @MainActor () -> Void) {
+        self.title = title
+        self.systemImage = systemImage
+        self.size = size
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
@@ -169,6 +180,7 @@ private struct ControlButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel(title)
     }
 }
 
@@ -184,12 +196,12 @@ struct PressableButtonStyle: ButtonStyle {
 struct EqualizerView: View {
     let isPlaying: Bool
     /// The sound itself, one level a bar from 0 to 1, when Eyelid listens to it. Otherwise the bars move on their own.
-    var levels: [Double]? = nil
+    var audioLevels: AudioLevels? = nil
 
     private let speeds: [Double] = [5.1, 6.7, 4.3, 7.9]
 
     var body: some View {
-        if let levels, isPlaying {
+        if let levels = audioLevels?.levels, isPlaying {
             bars(speeds.indices.map { index in
                 3 + 11 * CGFloat(levels.indices.contains(index) ? levels[index] : 0)
             })

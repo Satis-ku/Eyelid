@@ -160,7 +160,7 @@ private struct ShelfButton<Label: View>: View {
             label()
                 .foregroundStyle(.white.opacity(0.7))
                 .frame(width: 22, height: 22)
-                .background(Circle().fill(.white.opacity(0.12)))
+                .background(.white.opacity(0.12), in: Circle())
                 .contentShape(Circle())
         }
         .buttonStyle(PressableButtonStyle())
@@ -182,7 +182,7 @@ private struct DropPrompt: View {
         }
         .foregroundStyle(.white.opacity(isTargeted ? 0.9 : 0.5))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(DropOutline(isTargeted: isTargeted))
+        .background { DropOutline(isTargeted: isTargeted) }
         .animation(.easeOut(duration: 0.15), value: isTargeted)
     }
 }

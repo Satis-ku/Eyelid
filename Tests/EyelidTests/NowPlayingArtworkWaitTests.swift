@@ -88,7 +88,7 @@ struct NowPlayingArtworkWaitTests {
         service.apply(try snapshot("One", artist: "Band", album: "Album", duration: 200, elapsed: 0))
 
         service.apply(try snapshot("Two", artist: "Band", album: "Album", duration: 200, elapsed: 0))
-        try await Task.sleep(for: .milliseconds(250))
+        await service.earlyTitleTask?.value
 
         #expect(service.track?.title == "Two")
         #expect(starts.count == 2)
@@ -138,7 +138,7 @@ struct NowPlayingArtworkWaitTests {
         service.apply(try snapshot("One", artwork: try png(red: 0.9, green: 0.1, blue: 0.1)))
 
         service.apply(try snapshot("Two"))
-        try await Task.sleep(for: .milliseconds(250))
+        await service.artworkWait?.value
 
         #expect(!service.isAwaitingArtwork)
         #expect(service.track?.title == "Two")
@@ -154,7 +154,7 @@ struct NowPlayingArtworkWaitTests {
 
         service.apply(try snapshot("Two"))
         service.apply(try snapshot("Two", artwork: cover))
-        try await Task.sleep(for: .milliseconds(250))
+        await service.artworkWait?.value
 
         #expect(!service.isAwaitingArtwork)
         #expect(service.track?.artwork != nil)
@@ -202,8 +202,9 @@ struct NowPlayingArtworkWaitTests {
         // The pointer leaves and comes back, then the video opens: the same item, now heard.
         service.apply(try snapshot("Preview", playing: false))
         service.apply(try snapshot("Preview"))
+        let heard = try #require(service.audibleTask)
         sound.isOn = true
-        try await Task.sleep(for: .milliseconds(400))
+        await heard.value
         #expect(starts.count == 1)
         #expect(!service.isSilent)
     }

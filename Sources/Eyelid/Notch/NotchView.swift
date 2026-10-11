@@ -78,7 +78,7 @@ struct NotchView: View {
             ClosedActivityView(
                 track: track,
                 notchSize: model.geometry.notchSize,
-                levels: model.audioLevels.levels,
+                audioLevels: model.audioLevels,
                 isEqualizerHovered: model.isHoveringEqualizer
             ) {
                 model.openSound()
@@ -180,7 +180,7 @@ private struct TabButton: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(isSelected ? 1 : 0.45))
                 .frame(width: 28, height: 22)
-                .background(Capsule().fill(.white.opacity(isSelected ? 0.14 : 0)))
+                .background(.white.opacity(isSelected ? 0.14 : 0), in: Capsule())
                 .contentShape(Capsule())
         }
         .buttonStyle(PressableButtonStyle())

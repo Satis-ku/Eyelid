@@ -26,12 +26,9 @@ enum ShelfThumbnails {
         // Draws documents and images the way Finder does, with a page outline or a border.
         request.iconMode = true
 
-        let cgImage: CGImage? = await withCheckedContinuation { continuation in
-            QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, _ in
-                continuation.resume(returning: representation?.cgImage)
-            }
+        guard let cgImage = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request).cgImage else {
+            return nil
         }
-        guard let cgImage else { return nil }
 
         // Quick Look keeps the file's aspect ratio, so the thumbnail isn't always square.
         let image = NSImage(cgImage: cgImage, size: CGSize(width: CGFloat(cgImage.width) / 2, height: CGFloat(cgImage.height) / 2))
