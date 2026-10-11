@@ -26,14 +26,16 @@ struct OutputActivityView: View {
         let symbol = earbud.flatMap(event.icon.earbudSymbolName) ?? event.icon.availableSymbolName
         let iconIsOnTheRight = earbud == .right && symbol != event.icon.availableSymbolName
 
+        // ZStacks, not Groups: a Group with nothing in it, as the level is for an output with no charge or volume,
+        // takes no room at all, which pulled the icon under the hardware notch.
         return HStack(spacing: 0) {
-            Group {
+            ZStack {
                 if iconIsOnTheRight { level } else { icon(symbol) }
             }
             .frame(width: sideWidth)
             Spacer()
                 .frame(width: notchSize.width)
-            Group {
+            ZStack {
                 if iconIsOnTheRight { icon(symbol) } else { level }
             }
             .frame(width: sideWidth)
