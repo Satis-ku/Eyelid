@@ -133,6 +133,9 @@ struct PlaybackProgressView: View {
     struct Seek {
         let position: TimeInterval
         let at: Date
+        /// The track it was for: the next one starts from its own beginning.
+        let title: String
+        let artist: String
     }
 
     /// How long a seek shows before the bar goes back to what the player reports: one that can't seek never gets
@@ -206,7 +209,7 @@ struct PlaybackProgressView: View {
 
     private func go(to position: TimeInterval, of duration: TimeInterval) {
         let position = min(max(position, 0), duration)
-        sought = Seek(position: position, at: .now)
+        sought = Seek(position: position, at: .now, title: track.title, artist: track.artist)
         seek(position)
     }
 
@@ -220,7 +223,9 @@ struct PlaybackProgressView: View {
             return dragged
         }
         let reported = track.elapsedTime(at: date) ?? 0
-        guard let sought, date.timeIntervalSince(sought.at) < seekGrace else { return reported }
+        guard let sought, date.timeIntervalSince(sought.at) < seekGrace,
+              sought.title == track.title, sought.artist == track.artist
+        else { return reported }
         let played = track.isPlaying ? max(date.timeIntervalSince(sought.at) * track.playbackRate, 0) : 0
         let expected = min(sought.position + played, track.duration ?? .infinity)
         return abs(reported - expected) < seekTolerance ? reported : expected
