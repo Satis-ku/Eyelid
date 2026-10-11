@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The Sound tab of the open notch: the volume, and the outputs to switch between, like the Sound menu in Control
-/// Center.
+/// The Sound section of the open notch: the volume, the outputs to switch between, like the Sound menu in Control
+/// Center, and the apps playing.
 struct SoundPanel: View {
     let sound: SoundControl
     let settings: AppSettings
@@ -12,15 +12,30 @@ struct SoundPanel: View {
     var body: some View {
         VStack(spacing: 8) {
             volumeRow
-            // No ScrollView: it doesn't take the first click in a window that isn't key, which the notch never is.
-            VStack(spacing: 2) {
-                ForEach(sound.devices.prefix(NotchViewModel.Layout.soundMaxRows)) { device in
-                    OutputDeviceRow(
-                        device: device,
-                        icon: settings.icon(for: device),
-                        isSelected: device.id == sound.defaultDeviceID
-                    ) {
-                        sound.select(device)
+            HStack(alignment: .top, spacing: 14) {
+                column("Output") {
+                    // No ScrollView: it doesn't take the first click in a window that isn't key, which the notch
+                    // never is.
+                    ForEach(sound.devices.prefix(NotchViewModel.Layout.soundMaxRows)) { device in
+                        OutputDeviceRow(
+                            device: device,
+                            icon: settings.icon(for: device),
+                            isSelected: device.id == sound.defaultDeviceID
+                        ) {
+                            sound.select(device)
+                        }
+                    }
+                }
+                column("Playing") {
+                    if sound.apps.isEmpty {
+                        Text("No app is playing")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.4))
+                            .frame(height: NotchViewModel.Layout.soundRowHeight - 2)
+                            .padding(.horizontal, 8)
+                    }
+                    ForEach(sound.apps.prefix(NotchViewModel.Layout.soundMaxRows)) { app in
+                        AudioAppRow(app: app)
                     }
                 }
             }
@@ -45,6 +60,18 @@ struct SoundPanel: View {
                 try? await Task.sleep(for: .milliseconds(500))
             }
         }
+    }
+
+    private func column<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.4))
+                .padding(.horizontal, 8)
+                .frame(height: NotchViewModel.Layout.soundHeaderHeight, alignment: .bottom)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var volumeRow: some View {
