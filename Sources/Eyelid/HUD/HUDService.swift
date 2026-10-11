@@ -75,6 +75,12 @@ final class HUDService {
 
     /// How long after a key the watcher's report of the same volume is taken for Eyelid's own change.
     static let ownChangeWindow: Duration = .seconds(1)
+    /// After the Accessibility list changes, the tap stays off this long before access is checked again.
+    static let accessSettleDelay: Duration = .milliseconds(500)
+
+    private var isEnabled = false
+    private var accessListObserver: NSObjectProtocol?
+    private var accessListTask: Task<Void, Never>?
 
     init(
         settings: AppSettings,
@@ -91,12 +97,41 @@ final class HUDService {
         volumeWatcher.onChange = { [weak self] device, state in
             self?.volumeChangedElsewhere(device, state)
         }
+        // macOS posts this whenever the Accessibility list in System Settings changes. Taking Eyelid's access away
+        // while its tap runs can stall input across the Mac, so the tap stops at once, before any check.
+        accessListObserver = DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.accessibility.api"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.accessibilityListChanged()
+            }
+        }
+    }
+
+    /// Stops the tap right away, then starts it again once access is settled, if Eyelid still has it.
+    func accessibilityListChanged() {
+        guard isEnabled else { return }
+        if tap.isRunning {
+            tap.stop()
+            logger.info("The Accessibility list changed, so the key tap is off until access is checked again")
+        }
+        accessListTask?.cancel()
+        accessListTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.accessSettleDelay)
+            guard !Task.isCancelled else { return }
+            self?.followAccess()
+        }
     }
 
     /// Starts handling the keys, or waits for the Accessibility permission first.
     func setEnabled(_ enabled: Bool) {
+        isEnabled = enabled
         accessTask?.cancel()
         accessTask = nil
+        accessListTask?.cancel()
+        accessListTask = nil
 
         guard enabled else {
             tap.stop()
@@ -160,7 +195,11 @@ final class HUDService {
         guard SystemVolume.apply(new, from: state, on: device) else { return false }
 
         ownVolume = (new, .now)
-        showVolume(new, of: device)
+        // The tap waits for this callback, and with it every key on the Mac. Reading the headphones' charge for the
+        // HUD can take a while, so it happens after the key is handled.
+        Task { @MainActor [weak self] in
+            self?.showVolume(new, of: device)
+        }
         return true
     }
 
