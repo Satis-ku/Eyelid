@@ -97,7 +97,9 @@ struct IdleActivityView: View {
         let sideWidth = NotchViewModel.Layout.activitySideWidth
 
         HStack(spacing: 0) {
-            Group {
+            // A ZStack keeps its width with no battery, as on a Mac without one; an empty Group would take none and
+            // pull the time under the hardware notch.
+            ZStack {
                 if let battery {
                     CompactBatteryIcon(state: battery)
                         .scaleEffect(0.85)
