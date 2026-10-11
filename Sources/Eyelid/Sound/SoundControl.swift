@@ -14,12 +14,18 @@ final class SoundControl {
     private(set) var volume = SystemVolume.State(level: 0, isMuted: false)
     /// False for outputs whose volume can't be set, as with many HDMI displays.
     private(set) var canSetVolume = false
+    /// The apps sending sound right now.
+    private(set) var apps: [AudioApp] = []
     /// While the slider is dragged, reading the volume back would make it jump.
     var isAdjusting = false
 
     /// Reads everything again. Cheap: a few Core Audio queries.
     func refresh() {
         devices = OutputDevice.all()
+        let playing = AudioApps.playing()
+        if playing != apps {
+            apps = playing
+        }
         defaultDeviceID = AudioProperty.defaultOutputDevice().flatMap(OutputDevice.init(audioDevice:))?.id
         guard !isAdjusting else { return }
         if let (_, state) = SystemVolume.read() {

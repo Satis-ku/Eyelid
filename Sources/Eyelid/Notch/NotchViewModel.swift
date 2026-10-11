@@ -27,8 +27,9 @@ final class NotchViewModel {
         /// Height of the open notch's section, between the strip beside the camera and the dock. The same for every
         /// section, so switching between them in the dock doesn't pull the notch out from under the pointer.
         static let openContentHeight: CGFloat = 200
-        /// The Sound section's volume row and Sound Settings link, and the height of each output.
-        static let soundFixedHeight: CGFloat = 70
+        /// The Sound section's volume row, column titles and Sound Settings link, and the height of each row.
+        static let soundHeaderHeight: CGFloat = 14
+        static let soundFixedHeight: CGFloat = 70 + soundHeaderHeight + 2
         static let soundRowHeight: CGFloat = 26
         /// As many outputs as fit the section.
         static let soundMaxRows = Int((openContentHeight - soundFixedHeight) / soundRowHeight)

@@ -19,6 +19,8 @@ struct OutputDeviceRow: View {
                     .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
                     .foregroundStyle(.white.opacity(isSelected ? 1 : 0.75))
                     .lineLimit(1)
+                    // A column is half the notch wide: names like "MacBook Pro Speakers" shrink a little first.
+                    .minimumScaleFactor(0.8)
                 Spacer(minLength: 4)
                 if let level = HeadphonesBattery.current(for: device)?.level {
                     Text("\(level)%")
