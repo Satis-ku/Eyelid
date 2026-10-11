@@ -83,6 +83,12 @@ final class NowPlayingService {
         process = nil
     }
 
+    /// Moves the track to `position`, within its length. The stream then reports where it is, if the player could.
+    func seek(to position: TimeInterval) {
+        guard let duration = track?.duration, duration > 0 else { return }
+        adapter?.seek(to: min(max(position, 0), duration))
+    }
+
     func send(_ command: MediaRemoteAdapter.Command) {
         adapter?.send(command)
 
