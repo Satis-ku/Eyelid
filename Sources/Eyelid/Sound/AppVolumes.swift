@@ -9,8 +9,15 @@ private let logger = Logger(subsystem: "io.github.satis-ku.eyelid", category: "A
 protocol AppVolumeTapping: AnyObject {
     var processes: [AudioObjectID] { get }
     var outputUID: String { get }
+    /// Whether it plays the app now, rather than only keeping it muted.
+    var isRunning: Bool { get }
+    /// How long it has heard only silence, from its start, or nil once it has heard anything.
+    var silence: Duration? { get }
     func setGain(_ value: Float)
     func setEqualizer(_ settings: EqualizerSettings)
+    func setRunning(_ running: Bool)
+    /// Whether macOS keeps the app's sound from Eyelid.
+    func isHearingDenied() -> Bool
     func stop()
 }
 
@@ -24,6 +31,9 @@ extension AppVolumeTap: AppVolumeTapping {}
 /// different latencies. So switches happen where they can't be heard when they can: an app back at full volume keeps
 /// its tap until it's quiet. And while `routesPlayingApps` is on, every app playing goes through a tap from its first
 /// sound, so turning it down or up never switches anything.
+///
+/// A tap plays its app while the app plays and for `quietGrace` after, so a pause doesn't cut anything; then it only
+/// keeps the app muted, and the output, and the Mac, can sleep.
 @MainActor
 @Observable
 final class AppVolumes {
@@ -34,6 +44,7 @@ final class AppVolumes {
         let outputUID: String
         let gain: Float
         let equalizer: EqualizerSettings
+        let isRunning: Bool
     }
 
     /// Whether this Mac can tap apps: macOS 14.2 and later.
@@ -45,6 +56,9 @@ final class AppVolumes {
     private(set) var volumes: [String: Float]
     /// Equalizers that aren't flat, by app. An app with one plays through a tap, as one turned down does.
     private(set) var equalizers: [String: EqualizerSettings]
+    /// Whether macOS doesn't let Eyelid hear apps, so their taps would keep them silent. Apps then play as they do
+    /// without Eyelid, until a volume or an equalizer is changed again.
+    private(set) var isHearingDenied = false
 
     /// Whether every app playing goes through a tap, at full volume unless turned down. On while the equalizer
     /// follows the sound, since macOS shows the recording indicator then anyway. A tap stays `quietGrace` after its
@@ -72,14 +86,22 @@ final class AppVolumes {
     @ObservationIgnored private(set) var taps: [String: any AppVolumeTapping] = [:]
     /// When each app was last heard playing.
     @ObservationIgnored private var lastHeard: [String: ContinuousClock.Instant] = [:]
+    /// Since when each app playing has played without a break.
+    @ObservationIgnored private var playingSince: [String: ContinuousClock.Instant] = [:]
+    /// Taps already asked whether macOS lets Eyelid hear their app. Asking can interrupt the sound, so once is enough.
+    @ObservationIgnored private var askedTaps = Set<ObjectIdentifier>()
     @ObservationIgnored private var listeners: [(AudioObjectPropertyAddress, AudioObjectPropertyListenerBlock)] = []
     /// Listeners on each process for its sound starting and stopping, by process.
     @ObservationIgnored private var processListeners: [AudioObjectID: AudioObjectPropertyListenerBlock] = [:]
     /// Looks again later: for apps gone quiet, and a tap's grace running out.
     @ObservationIgnored private(set) var checkTask: Task<Void, Never>?
-    /// How often, at most, while there's something to look for. Tests shorten it.
+    /// When `checkTask` looks again, from the last `sync`.
+    @ObservationIgnored private(set) var checkDelay: Duration?
+    /// How often it looks while an app with a tap plays; five times less often while none does. Tests shorten it.
     @ObservationIgnored let checkInterval: Duration
     @ObservationIgnored let quietGrace: Duration
+    /// Silence this long from a tap, while its app plays, may mean Eyelid isn't allowed to hear it.
+    static let silenceTimeout: Duration = .seconds(4)
 
     private static let key = "appVolumes"
     private static let equalizersKey = "appEqualizers"
@@ -114,6 +136,7 @@ final class AppVolumes {
     /// Sets an app's equalizer. A flat one is forgotten, and the app plays as it does without Eyelid once it's quiet.
     func setEqualizer(_ settings: EqualizerSettings, for app: AudioApp) {
         let key = app.volumeKey
+        isHearingDenied = false
         equalizers[key] = settings.isFlat ? nil : settings
         defaults.set(try? JSONEncoder().encode(equalizers), forKey: Self.equalizersKey)
         if let tap = taps[key] {
@@ -137,6 +160,7 @@ final class AppVolumes {
     func setVolume(_ volume: Float, for app: AudioApp) {
         let volume = min(max(volume, 0), 1)
         let key = app.volumeKey
+        isHearingDenied = false
         volumes[key] = volume < 1 ? volume : nil
         defaults.set(volumes.mapValues(Double.init), forKey: Self.key)
         if let tap = taps[key] {
@@ -166,31 +190,38 @@ final class AppVolumes {
     }
 
     /// Gives a tap to every app that needs one on the current output, and takes it from the others once that can't
-    /// be heard.
+    /// be heard. Each tap plays its app only while that can be heard.
     func sync() {
-        guard let (device, uid) = output() else {
+        let now = now()
+        guard isWatching, let (device, uid) = output() else {
             stopAll()
+            watchProcesses([])
+            scheduleCheck(at: now)
             return
         }
-        let now = now()
         let current = apps()
         var wanted: [String: AudioApp] = [:]
         var kept: [String: AudioApp] = [:]
+        var playing: [String: ContinuousClock.Instant] = [:]
         for app in current where !app.processes.isEmpty {
             let key = app.volumeKey
             if app.isPlaying {
                 lastHeard[key] = now
+                playing[key] = playingSince[key] ?? now
             }
             if hasOwnSettings(key) || (routesPlayingApps && app.isPlaying) {
                 wanted[key] = app
-            } else if taps[key] != nil, app.isPlaying || isInGrace(key, at: now) {
+            } else if taps[key] != nil, app.isPlaying || (routesPlayingApps && isAudible(key, at: now)) {
                 kept[key] = app
             }
         }
+        playingSince = playing
+        lastHeard = lastHeard.filter { now - $0.value < quietGrace }
 
         for (key, tap) in taps {
             // A new output, or a helper that came or went, needs a new tap, unless the app doesn't need one anymore.
             if let app = wanted[key] ?? kept[key], tap.outputUID == uid, tap.processes == app.processes {
+                tap.setRunning(isAudible(key, at: now))
                 continue
             }
             tap.stop()
@@ -202,21 +233,50 @@ final class AppVolumes {
                 output: device,
                 outputUID: uid,
                 gain: volumes[key] ?? 1,
-                equalizer: equalizers[key] ?? .flat
+                equalizer: equalizers[key] ?? .flat,
+                isRunning: isAudible(key, at: now)
             )
             if let tap = makeTap(request) {
                 taps[key] = tap
                 logger.debug("Playing \(app.name, privacy: .public) through Eyelid")
             }
         }
+        if isHearingDeniedByAnyTap(at: now) {
+            logger.error("macOS doesn't let Eyelid hear apps, so they play as they do without it")
+            isHearingDenied = true
+            sync()
+            return
+        }
 
         watchProcesses(current.flatMap(\.processes))
         scheduleCheck(at: now)
     }
 
-    private func isInGrace(_ key: String, at now: ContinuousClock.Instant) -> Bool {
-        guard routesPlayingApps, let heard = lastHeard[key] else { return false }
+    /// Whether there's anything to do: apps with settings of their own, or every app playing to route.
+    private var isWatching: Bool {
+        !isHearingDenied && (routesPlayingApps || !volumes.isEmpty || !equalizers.isEmpty || !taps.isEmpty)
+    }
+
+    /// Whether an app plays, or did a moment ago: within `quietGrace`.
+    private func isAudible(_ key: String, at now: ContinuousClock.Instant) -> Bool {
+        guard let heard = lastHeard[key] else { return false }
         return now - heard < quietGrace
+    }
+
+    /// Asks macOS, once a tap, whether it keeps an app's sound from Eyelid, when the tap has heard only silence while
+    /// its app played. Silence alone may just be an app playing nothing, such as a browser with a page that might.
+    private func isHearingDeniedByAnyTap(at now: ContinuousClock.Instant) -> Bool {
+        askedTaps.formIntersection(taps.values.map(ObjectIdentifier.init))
+        for (key, tap) in taps where !askedTaps.contains(ObjectIdentifier(tap)) {
+            guard let since = playingSince[key], now - since >= Self.silenceTimeout,
+                  let silence = tap.silence, silence >= Self.silenceTimeout
+            else { continue }
+            askedTaps.insert(ObjectIdentifier(tap))
+            if tap.isHearingDenied() {
+                return true
+            }
+        }
+        return false
     }
 
     /// Hears each process start and stop sending sound, so a playing app gets its tap from its first sound.
@@ -242,15 +302,34 @@ final class AppVolumes {
         }
     }
 
-    /// Looks again in a while, as long as a tap may need to go or an app may start playing: the listeners should
-    /// catch both, and this makes sure.
+    /// Looks again while there are taps: often while an app with one plays, when a quiet app's grace runs out, and
+    /// now and then otherwise. The listeners should catch apps starting and stopping, and this makes sure, since an
+    /// app whose tap isn't running stays muted.
     private func scheduleCheck(at now: ContinuousClock.Instant) {
         checkTask?.cancel()
         checkTask = nil
-        guard routesPlayingApps || !taps.isEmpty else { return }
-        checkTask = Task { [weak self, checkInterval] in
-            try? await Task.sleep(for: checkInterval)
-            guard let self, !Task.isCancelled else { return }
+        checkDelay = nil
+        guard isWatching else { return }
+        let idle = checkInterval * 5
+        var delay: Duration?
+        for (key, tap) in taps {
+            var due = idle
+            if playingSince[key] != nil {
+                due = checkInterval
+            } else if tap.isRunning, let heard = lastHeard[key] {
+                due = min(due, max(heard + quietGrace - now, .zero))
+            }
+            delay = min(delay ?? due, due)
+        }
+        guard let delay else { return }
+        checkDelay = delay
+        checkTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: delay, tolerance: delay / 10)
+            } catch {
+                return
+            }
+            guard let self else { return }
             checkTask = nil
             sync()
         }
@@ -281,7 +360,8 @@ final class AppVolumes {
             output: request.output,
             outputUID: request.outputUID,
             gain: request.gain,
-            equalizer: request.equalizer
+            equalizer: request.equalizer,
+            isRunning: request.isRunning
         )
     }
 }

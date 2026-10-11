@@ -92,6 +92,27 @@ struct AppVolumeMixerTests {
         #expect(output.samples(0) == [0, 0.25, 0.5, 0.75])
     }
 
+    /// A headset's microphone is left out of the aggregate's input, and Core Audio hands its buffer over empty.
+    @Test func anInputLeftOutDoesntCutTheSound() {
+        let input = Buffers(channels: [1, 2], frames: 2) { channel, _ in Float(channel) }
+        input.list[0].mData = nil
+        input.list[0].mDataByteSize = 0
+        let output = Buffers(channels: [2], frames: 2)
+
+        AppVolumeMixer.render(input.list, skippingChannels: 1, into: output.list, from: 1, to: 1)
+
+        #expect(output.samples(0) == [1, 1])
+        #expect(output.samples(1) == [2, 2])
+    }
+
+    @Test func soundIsToldFromSilenceAfterTheOutputsOwnInput() {
+        let silent = Buffers(channels: [1, 2], frames: 3) { channel, _ in channel == 0 ? 1 : 0 }
+        let playing = Buffers(channels: [1, 2], frames: 3) { channel, frame in channel == 2 && frame == 2 ? 0.1 : 0 }
+
+        #expect(!AppVolumeMixer.hasSound(silent.list, skippingChannels: 1))
+        #expect(AppVolumeMixer.hasSound(playing.list, skippingChannels: 1))
+    }
+
     @Test func extraOutputChannelsAreSilent() {
         let input = Buffers(channels: [2], frames: 2) { _, _ in 1 }
         let output = Buffers(channels: [4], frames: 2)
@@ -110,16 +131,29 @@ struct AppVolumesTests {
         let processes: [AudioObjectID]
         let outputUID: String
         var gain: Float
+        var equalizer: EqualizerSettings
+        var isRunning: Bool
         var isStopped = false
+        var silence: Duration?
+        var isDenied = false
+        var timesAsked = 0
 
         init(_ request: AppVolumes.Request) {
             processes = request.processes
             outputUID = request.outputUID
             gain = request.gain
             equalizer = request.equalizer
+            isRunning = request.isRunning
         }
 
-        var equalizer: EqualizerSettings
+        func setRunning(_ running: Bool) {
+            isRunning = running
+        }
+
+        func isHearingDenied() -> Bool {
+            timesAsked += 1
+            return isDenied
+        }
 
         func setGain(_ value: Float) {
             gain = value
@@ -228,6 +262,7 @@ struct AppVolumesTests {
         let tap = try #require(world.made.first)
 
         volumes.setVolume(0.3, for: world.apps[0])
+        #expect(tap.gain == 0.3)
         volumes.setVolume(1, for: world.apps[0])
         volumes.sync()
 
@@ -298,15 +333,17 @@ struct AppVolumesTests {
         world.apps = [app("Music", processes: [10])]
         volumes.setVolume(0.5, for: world.apps[0])
 
+        let first = try #require(world.made.first)
+
         world.output = (2, "airpods")
         volumes.sync()
-        #expect(world.made.count == 2)
-        #expect(world.made[0].isStopped)
+        try #require(world.made.count == 2)
+        #expect(first.isStopped)
         #expect(world.made[1].outputUID == "airpods")
 
         world.apps = [app("Music", processes: [10, 12])]
         volumes.sync()
-        #expect(world.made.count == 3)
+        try #require(world.made.count == 3)
         #expect(world.made[2].processes == [10, 12])
         #expect(world.made[2].gain == 0.5)
     }
@@ -349,15 +386,20 @@ struct AppVolumesTests {
         #expect(tap.gain == 1)
     }
 
-    @Test func aFlatEqualizerIsForgotten() {
+    @Test func aFlatEqualizerIsForgotten() throws {
         let volumes = makeVolumes()
         let music = app("Music", processes: [10])
         world.apps = [music]
+        volumes.setEqualizer(EqualizerSettings(.rock), for: music)
+        let tap = try #require(world.made.first)
 
         volumes.setEqualizer(.flat, for: music)
-
-        #expect(world.made.isEmpty)
+        #expect(tap.equalizer == .flat)
         #expect(volumes.equalizers.isEmpty)
+        #expect(makeVolumes().equalizer(for: music) == .flat)
+
+        volumes.sync()
+        #expect(tap.isStopped)
     }
 
     @Test func equalizersAreKept() {
@@ -378,5 +420,109 @@ struct AppVolumesTests {
 
         #expect(world.made.count == 1)
         #expect(tap.equalizer == EqualizerSettings(.rock))
+    }
+
+    // MARK: - Letting the output sleep
+
+    @Test func aTapForAnAppNotHeardYetOnlyKeepsItMuted() throws {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10])]
+
+        volumes.setVolume(0.5, for: world.apps[0])
+
+        let tap = try #require(world.made.first)
+        #expect(!tap.isRunning)
+    }
+
+    /// A quiet app keeps its tap, so its next sound is caught, but the tap stops playing it once a pause is long.
+    @Test func aQuietAppsTapStopsPlayingItAfterAWhile() throws {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10], isPlaying: true)]
+        volumes.setVolume(0.5, for: world.apps[0])
+        let tap = try #require(world.made.first)
+        #expect(tap.isRunning)
+
+        world.apps = [app("Music", processes: [10])]
+        world.now += volumes.quietGrace - .milliseconds(20)
+        volumes.sync()
+        #expect(tap.isRunning)
+        // Looks again as the pause gets long.
+        #expect(volumes.checkDelay == .milliseconds(20))
+
+        world.now += .milliseconds(20)
+        volumes.sync()
+        #expect(!tap.isRunning)
+        #expect(!tap.isStopped)
+
+        world.apps = [app("Music", processes: [10], isPlaying: true)]
+        volumes.sync()
+        #expect(tap.isRunning)
+        #expect(world.made.count == 1)
+    }
+
+    @Test func checksAreOftenWhilePlayingAndRareOtherwise() {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10], isPlaying: true)]
+        volumes.setVolume(0.5, for: world.apps[0])
+        #expect(volumes.checkDelay == volumes.checkInterval)
+
+        world.apps = [app("Music", processes: [10])]
+        world.now += volumes.quietGrace
+        volumes.sync()
+        #expect(volumes.checkDelay == volumes.checkInterval * 5)
+    }
+
+    @Test func withNothingToDoNothingIsChecked() {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10], isPlaying: true)]
+
+        volumes.sync()
+
+        #expect(world.made.isEmpty)
+        #expect(volumes.checkTask == nil)
+    }
+
+    // MARK: - Without the permission to hear apps
+
+    /// Without the permission, a tap hears silence and keeps its app silent, so apps go back to playing on their own.
+    @Test func whenMacOSWontLetEyelidHearAppsTheyPlayOnTheirOwn() throws {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10], isPlaying: true)]
+        volumes.setVolume(0.5, for: world.apps[0])
+        let tap = try #require(world.made.first)
+        tap.silence = AppVolumes.silenceTimeout
+        tap.isDenied = true
+
+        world.now += AppVolumes.silenceTimeout
+        volumes.sync()
+
+        #expect(volumes.isHearingDenied)
+        #expect(tap.isStopped)
+        #expect(volumes.taps.isEmpty)
+        #expect(volumes.checkTask == nil)
+
+        volumes.setVolume(0.4, for: world.apps[0])
+        #expect(!volumes.isHearingDenied)
+        #expect(world.made.count == 2)
+    }
+
+    /// An app may well play silence, so a silent tap only leads to asking, once.
+    @Test func aSilentTapIsAskedAboutOnce() throws {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10], isPlaying: true)]
+        volumes.setVolume(0.5, for: world.apps[0])
+        let tap = try #require(world.made.first)
+        tap.silence = AppVolumes.silenceTimeout
+
+        volumes.sync()
+        #expect(tap.timesAsked == 0)
+
+        world.now += AppVolumes.silenceTimeout
+        volumes.sync()
+        volumes.sync()
+
+        #expect(tap.timesAsked == 1)
+        #expect(!volumes.isHearingDenied)
+        #expect(!tap.isStopped)
     }
 }

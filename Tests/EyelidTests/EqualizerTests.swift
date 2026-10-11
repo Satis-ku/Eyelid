@@ -55,6 +55,39 @@ struct EqualizerTests {
         #expect(abs(try gain(at: 440, gains: EqualizerSettings.flat.gains)) < 0.01)
     }
 
+    /// A 0 dB band's coefficients aren't zeros, so whether to filter comes from the gains.
+    @Test func flatGainsSetLaterStopFiltering() throws {
+        let filter = try #require(EqualizerFilter(sampleRate: 48_000, gains: EqualizerPreset.rock.gains))
+        filter.setGains(EqualizerSettings.flat.gains)
+        filter.update()
+        var samples = (0..<512).map { Float(sin(Double($0) * 0.3)) }
+        let original = samples
+
+        filter.process(&samples, stride: 1, frames: samples.count, channel: 0)
+
+        #expect(samples == original)
+    }
+
+    @Test func gainsSetLaterAreTakenUp() throws {
+        let filter = try #require(EqualizerFilter(sampleRate: 48_000, gains: EqualizerSettings.flat.gains))
+        var gains = EqualizerSettings.flat.gains
+        gains[5] = 6
+        filter.setGains(gains)
+        filter.update()
+        var samples = (0..<512).map { Float(sin(2 * .pi * 1_000 * Double($0) / 48_000)) }
+        let original = samples
+
+        filter.process(&samples, stride: 1, frames: samples.count, channel: 0)
+
+        #expect(samples != original)
+    }
+
+    @Test func bandsAboveWhatTheRateHoldsAreLeftAlone() {
+        let coefficients = Biquad.equalizer(EqualizerPreset.trebleBoost.gains, sampleRate: 22_050)
+
+        #expect(Array(coefficients.suffix(5)) == [1, 0, 0, 0, 0])
+    }
+
     @Test func boostsGetHeadroomSoNothingClips() {
         let settings = EqualizerSettings(gains: [6, 0, 0, 0, 0, 0, 0, 0, 0, -3])
 
