@@ -59,6 +59,9 @@ final class NotchWindowController {
         model.pasteIntoFrontApp = {
             Paster.paste()
         }
+        model.openSound = { [weak self] in
+            self?.openSound()
+        }
         // Clicking another window takes the keyboard away from the clipboard history, which then goes away.
         observers.append(NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification,
@@ -127,6 +130,10 @@ final class NotchWindowController {
     // MARK: - Volume and brightness
 
     func show(_ event: HUDEvent) {
+        // The Sound tab shows the volume already, and moves with the slider.
+        if event.kind == .volume, model.state == .open, model.showsSound {
+            return
+        }
         dismissTrackTitle()
         model.hud = event
         // Holding a key repeats it, so the HUD stays until the last press plus the duration.
@@ -190,6 +197,13 @@ final class NotchWindowController {
         model.trackTitle = nil
     }
 
+    // MARK: - Sound
+
+    /// Opens the notch on the Sound tab, after a click on the equalizer.
+    private func openSound() {
+        open(on: .sound)
+    }
+
     // MARK: - Hover
 
     private func installMouseMonitors() {
@@ -249,7 +263,19 @@ final class NotchWindowController {
             model.isDraggingFiles = false
         }
 
-        let isInside = model.hoverRect.contains(NSEvent.mouseLocation)
+        let pointer = NSEvent.mouseLocation
+        // The equalizer takes clicks, for the Sound tab, rather than opening the notch on hover.
+        let isOverEqualizer = model.equalizerRect?.contains(pointer) == true
+        if model.state == .closed {
+            panel.ignoresMouseEvents = !isOverEqualizer
+        }
+        if isOverEqualizer != model.isHoveringEqualizer {
+            model.isHoveringEqualizer = isOverEqualizer
+            if isOverEqualizer, settings.hapticsEnabled {
+                NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+            }
+        }
+        let isInside = model.hoverRect.contains(pointer) && !isOverEqualizer
         switch (model.state, isInside) {
         case (.closed, true):
             scheduleOpen()
@@ -281,15 +307,21 @@ final class NotchWindowController {
         }
     }
 
-    private func open() {
+    /// Opens on `tab` when there's a reason for it: the clipboard shortcut, or a click on the equalizer. Otherwise on
+    /// the shelf for files being dragged, on Now Playing while something is heard, and on the last tab otherwise.
+    private func open(on tab: NotchViewModel.Tab? = nil) {
         logger.debug("Opened")
         openTask?.cancel()
         openTask = nil
         dismissTrackTitle()
+        if let tab {
+            model.tab = tab
+        } else if settings.shelfEnabled, model.isDraggingFiles {
+            model.tab = .shelf
+        } else if model.nowPlaying.track?.isPlaying == true, !model.nowPlaying.isSilent {
+            model.tab = .nowPlaying
+        }
         if settings.shelfEnabled {
-            if model.isDraggingFiles {
-                model.tab = .shelf
-            }
             model.shelf.refresh()
         }
         model.state = .open
@@ -345,10 +377,9 @@ extension NotchWindowController {
         guard settings.clipboardEnabled else { return }
 
         logger.debug("Opened the clipboard history")
-        model.tab = .clipboard
         model.resetClipboard()
         model.isHeldOpen = true
-        open()
+        open(on: .clipboard)
         takeKeyboard()
     }
 
