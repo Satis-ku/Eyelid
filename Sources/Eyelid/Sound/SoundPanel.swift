@@ -12,20 +12,19 @@ struct SoundPanel: View {
     var body: some View {
         VStack(spacing: 8) {
             volumeRow
-            ScrollView {
-                VStack(spacing: 2) {
-                    ForEach(sound.devices) { device in
-                        OutputDeviceRow(
-                            device: device,
-                            icon: settings.icon(for: device),
-                            isSelected: device.id == sound.defaultDeviceID
-                        ) {
-                            sound.select(device)
-                        }
+            // No ScrollView: it doesn't take the first click in a window that isn't key, which the notch never is.
+            VStack(spacing: 2) {
+                ForEach(sound.devices.prefix(NotchViewModel.Layout.soundMaxRows)) { device in
+                    OutputDeviceRow(
+                        device: device,
+                        icon: settings.icon(for: device),
+                        isSelected: device.id == sound.defaultDeviceID
+                    ) {
+                        sound.select(device)
                     }
                 }
             }
-            .scrollIndicators(.never)
+            Spacer(minLength: 0)
             HStack {
                 Spacer()
                 Button("Sound Settings…") {

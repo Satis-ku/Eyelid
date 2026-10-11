@@ -46,7 +46,7 @@ final class SystemAudioTap: @unchecked Sendable {
         }
         let aggregate: [String: Any] = [
             kAudioAggregateDeviceNameKey: "Eyelid equalizer",
-            kAudioAggregateDeviceUIDKey: UUID().uuidString,
+            kAudioAggregateDeviceUIDKey: OutputDevice.ownDevicePrefix + UUID().uuidString,
             kAudioAggregateDeviceMainSubDeviceKey: outputUID,
             kAudioAggregateDeviceIsPrivateKey: true,
             kAudioAggregateDeviceIsStackedKey: false,

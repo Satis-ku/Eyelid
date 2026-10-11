@@ -25,8 +25,9 @@ final class NotchViewModel {
         static let openContentHeight: CGFloat = 108
         /// The clipboard history needs room for a list, so the notch grows taller for it.
         static let clipboardContentHeight: CGFloat = 236
-        /// The Sound tab grows with the outputs, up to this height, then scrolls.
-        static let soundContentHeight: CGFloat = 196
+        /// The Sound tab grows with the outputs, up to this many, which fit the tallest the notch gets.
+        static let soundMaxRows = 6
+        static let soundContentHeight: CGFloat = soundFixedHeight + CGFloat(soundMaxRows) * soundRowHeight
         /// The Sound tab's volume row and Sound Settings link, and the height of each output.
         static let soundFixedHeight: CGFloat = 70
         static let soundRowHeight: CGFloat = 26
