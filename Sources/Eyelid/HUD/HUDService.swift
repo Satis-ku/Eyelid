@@ -76,19 +76,22 @@ final class HUDService {
     /// How long after a key the watcher's report of the same volume is taken for Eyelid's own change.
     static let ownChangeWindow: Duration = .seconds(1)
     /// After the Accessibility list changes, the tap stays off this long before access is checked again.
-    static let accessSettleDelay: Duration = .milliseconds(500)
+    let accessSettleDelay: Duration
 
     private var isEnabled = false
     private var accessListObserver: NSObjectProtocol?
-    private var accessListTask: Task<Void, Never>?
+    /// Ends once access is checked again after the list changed; tests wait on it.
+    private(set) var accessListTask: Task<Void, Never>?
 
     init(
         settings: AppSettings,
         access: AccessibilityAccess = AccessibilityAccess(),
         makeTap: (@escaping @MainActor (MediaKeyPress) -> Bool) -> any KeyTap = { MediaKeyTap(handler: $0) },
-        volumeWatcher: any VolumeWatching = VolumeWatcher()
+        volumeWatcher: any VolumeWatching = VolumeWatcher(),
+        accessSettleDelay: Duration = .milliseconds(500)
     ) {
         self.settings = settings
+        self.accessSettleDelay = accessSettleDelay
         self.access = access
         self.volumeWatcher = volumeWatcher
         tap = makeTap { [weak self] press in
@@ -118,8 +121,8 @@ final class HUDService {
             logger.info("The Accessibility list changed, so the key tap is off until access is checked again")
         }
         accessListTask?.cancel()
-        accessListTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.accessSettleDelay)
+        accessListTask = Task { [weak self, accessSettleDelay] in
+            try? await Task.sleep(for: accessSettleDelay)
             guard !Task.isCancelled else { return }
             self?.followAccess()
         }

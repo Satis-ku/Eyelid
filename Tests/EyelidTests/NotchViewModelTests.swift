@@ -281,10 +281,10 @@ struct NotchViewModelTests {
         #expect(model.windowSize.height > model.bodySize.height)
     }
 
-    @Test func clipboardSelectionStaysInTheList() {
+    @Test func clipboardSelectionStaysInTheList() throws {
         let model = makeModel()
         for text in ["one", "two", "three"] {
-            model.clipboard.add(try! #require(ClipboardEntry(items: [[.string: Data(text.utf8)]])))
+            model.clipboard.add(try #require(ClipboardEntry(items: [[.string: Data(text.utf8)]])))
         }
 
         model.moveClipboardSelection(by: -1)
