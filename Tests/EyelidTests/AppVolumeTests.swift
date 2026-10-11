@@ -252,6 +252,19 @@ struct AppVolumesTests {
         #expect(tap.isStopped)
     }
 
+    /// Hiding the live activity turns routing off to stop listening, so playing apps don't keep their taps.
+    @Test func turningRoutingOffStopsTapsAtOnceEvenWhilePlaying() throws {
+        let volumes = makeVolumes()
+        world.apps = [app("Music", processes: [10], isPlaying: true)]
+        volumes.routesPlayingApps = true
+        let tap = try #require(world.made.first)
+
+        volumes.routesPlayingApps = false
+
+        #expect(tap.isStopped)
+        #expect(volumes.taps.isEmpty)
+    }
+
     @Test func turningRoutingOffLeavesOnlyAppsTurnedDown() {
         let volumes = makeVolumes()
         world.apps = [app("Music", processes: [10], isPlaying: true), app("Video", processes: [20], isPlaying: true)]
