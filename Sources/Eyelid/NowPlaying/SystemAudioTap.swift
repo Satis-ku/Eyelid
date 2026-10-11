@@ -23,7 +23,12 @@ final class SystemAudioTap: @unchecked Sendable {
     private var mono = [Float](repeating: 0, count: 8_192)
     private var measured = [Float](repeating: 0, count: SpectrumAnalyzer.bands.count)
 
-    /// Starts listening, through the current default output. Returns false if Core Audio refuses.
+    /// Starts listening. Returns false if Core Audio refuses.
+    ///
+    /// The aggregate device holds the tap alone, with no output in it: with the output in, Eyelid took part in the
+    /// audio on that output, and Bluetooth's smart routing counted it as the app playing to AirPods, ahead of every
+    /// other. It then kept sound on them when another output was picked, and kept AirPods from switching to another
+    /// device.
     func start() -> Bool {
         stop()
 
@@ -38,20 +43,12 @@ final class SystemAudioTap: @unchecked Sendable {
             return false
         }
 
-        guard let output = AudioProperty.defaultOutputDevice(),
-              let outputUID = AudioProperty.string(AudioProperty.address(kAudioDevicePropertyDeviceUID), of: output)
-        else {
-            stop()
-            return false
-        }
         let aggregate: [String: Any] = [
             kAudioAggregateDeviceNameKey: "Eyelid equalizer",
             kAudioAggregateDeviceUIDKey: OutputDevice.ownDevicePrefix + UUID().uuidString,
-            kAudioAggregateDeviceMainSubDeviceKey: outputUID,
             kAudioAggregateDeviceIsPrivateKey: true,
             kAudioAggregateDeviceIsStackedKey: false,
             kAudioAggregateDeviceTapAutoStartKey: true,
-            kAudioAggregateDeviceSubDeviceListKey: [[kAudioSubDeviceUIDKey: outputUID]],
             kAudioAggregateDeviceTapListKey: [[
                 kAudioSubTapDriftCompensationKey: true,
                 kAudioSubTapUIDKey: description.uuid.uuidString,
