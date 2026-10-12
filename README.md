@@ -130,7 +130,9 @@ The eye icon in the menu bar opens Settings and quits Eyelid. Settings has a pag
 
 ## Install
 
-Eyelid runs on macOS 14 Sonoma or later, on Apple silicon and Intel Macs. It's made for MacBooks with a notch; other Macs get a virtual one.
+Eyelid is built for macOS 14 Sonoma or later, on Apple silicon and Intel Macs, and the release workflow checks both. Some features need a newer macOS: each app's volume and equalizer, and the equalizer that follows the sound, need macOS 14.2, and the translator needs macOS 26. It's used day to day on macOS 27 on Apple silicon, and CI builds and tests it on macOS 26. It hasn't been tried on older versions or on Intel Macs yet, so reports from them are welcome.
+
+It's made for MacBooks with a notch. Other Macs, Intel ones included, get a virtual notch at the top of the main display.
 
 ### With Homebrew
 
