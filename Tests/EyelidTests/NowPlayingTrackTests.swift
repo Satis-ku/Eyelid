@@ -128,7 +128,7 @@ struct SeekingTests {
 
     /// The player takes a moment to report a seek, and the bar doesn't jump back meanwhile.
     @Test func aSeekShowsUntilThePlayerReportsIt() {
-        let sought = PlaybackProgressView.Seek(position: 120, at: reportedAt.addingTimeInterval(10))
+        let sought = PlaybackProgressView.Seek(position: 120, at: reportedAt.addingTimeInterval(10), title: "Track", artist: "")
 
         #expect(position(after: 10.5, of: track(), sought: sought) == 120.5)
         #expect(position(after: 10.5, of: track(isPlaying: false), sought: sought) == 120)
@@ -141,7 +141,7 @@ struct SeekingTests {
 
     /// While seeking, players send a fresh update or two still at the old position: the bar doesn't go back to it.
     @Test func anUpdateFromBeforeTheSeekDoesntPullTheBarBack() {
-        let sought = PlaybackProgressView.Seek(position: 120, at: reportedAt.addingTimeInterval(10))
+        let sought = PlaybackProgressView.Seek(position: 120, at: reportedAt.addingTimeInterval(10), title: "Track", artist: "")
         var stale = track(reportedAt: reportedAt.addingTimeInterval(10.2))
         stale.elapsedTime = 40
 
@@ -150,10 +150,20 @@ struct SeekingTests {
 
     /// A player that can't seek reports nothing new: the bar goes back to where it really is.
     @Test func aSeekThePlayerIgnoresIsForgotten() {
-        let sought = PlaybackProgressView.Seek(position: 120, at: reportedAt.addingTimeInterval(10))
+        let sought = PlaybackProgressView.Seek(position: 120, at: reportedAt.addingTimeInterval(10), title: "Track", artist: "")
 
         let later = 10 + PlaybackProgressView.seekGrace
         #expect(position(after: later, of: track(), sought: sought) == 30 + later)
+    }
+
+    /// Skipping to the next track right after a seek starts it from its own beginning, not the seek's position.
+    @Test func aSeekBelongsToItsTrack() {
+        let sought = PlaybackProgressView.Seek(position: 120, at: reportedAt.addingTimeInterval(10), title: "Track", artist: "")
+        var next = track(reportedAt: reportedAt.addingTimeInterval(10.5))
+        next.title = "Next Track"
+        next.elapsedTime = 0
+
+        #expect(position(after: 11, of: next, sought: sought) == 0.5)
     }
 
     @Test func theAdapterTakesWholeMicroseconds() {
