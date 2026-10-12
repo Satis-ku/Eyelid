@@ -1,4 +1,3 @@
-import Carbon.HIToolbox
 import SwiftUI
 
 struct ClipboardSettings: View {
@@ -20,8 +19,8 @@ struct ClipboardSettings: View {
                     HotKeyRecorder(hotKey: $settings.clipboardHotKey, shortcut: shortcut)
                 } label: {
                     Text("Shortcut")
-                    if shortcut.isTaken {
-                        Text("Another app already uses this shortcut. Choose a different one.")
+                    if let problem = shortcut.problem {
+                        Text(problem)
                             .foregroundStyle(.red)
                     }
                 }
@@ -37,16 +36,7 @@ struct ClipboardSettings: View {
             }
 
             if settings.clipboardEnabled, let access, access != .allowed {
-                Section {
-                    LabeledContent {
-                        Button("Open Privacy & Security") {
-                            NSWorkspace.shared.open(Self.pasteboardPrivacySettings)
-                        }
-                    } label: {
-                        Text("Allow Eyelid to read what you copy")
-                        Text("macOS asks before an app reads what other apps copy. Set Eyelid to Allow under Paste from Other Apps, then quit and reopen Eyelid.")
-                    }
-                }
+                PasteAccessSection(explanation: "macOS asks before an app reads what other apps copy. Set Eyelid to Allow under Paste from Other Apps, then quit and reopen Eyelid.")
             }
 
             Section {
@@ -68,8 +58,6 @@ struct ClipboardSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: SettingsView.width)
-        .fixedSize()
         .task {
             while !Task.isCancelled {
                 access = clipboard.access
@@ -78,7 +66,22 @@ struct ClipboardSettings: View {
         }
     }
 
-    /// Privacy & Security → Paste from Other Apps.
-    private static let pasteboardPrivacySettings =
-        URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Pasteboard")!
+}
+
+/// Asks to let Eyelid read what other apps copy, for the clipboard history and for translating a double copy.
+struct PasteAccessSection: View {
+    let explanation: String
+
+    var body: some View {
+        Section {
+            LabeledContent {
+                Button("Open Privacy & Security") {
+                    NSWorkspace.shared.open(SystemSettingsPage.pasteFromOtherApps)
+                }
+            } label: {
+                Text("Allow Eyelid to read what you copy")
+                Text(explanation)
+            }
+        }
+    }
 }

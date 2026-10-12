@@ -10,6 +10,8 @@ struct HotKey: Equatable, Sendable {
     static let clipboardDefault = HotKey(keyCode: UInt32(kVK_ANSI_V), modifiers: UInt32(cmdKey | shiftKey))
     /// Two keys side by side, for one hand, that hardly any app uses: ⌥Z only types "Ω".
     static let liveActivityDefault = HotKey(keyCode: UInt32(kVK_ANSI_Z), modifiers: UInt32(optionKey))
+    /// T for translate. ⌥T only types "†".
+    static let translationDefault = HotKey(keyCode: UInt32(kVK_ANSI_T), modifiers: UInt32(optionKey))
 
     init(keyCode: UInt32, modifiers: UInt32) {
         self.keyCode = keyCode
@@ -89,6 +91,7 @@ final class HotKeyCenter {
 
     private var handlers: [Registration: @MainActor () -> Void] = [:]
     private var references: [Registration: EventHotKeyRef] = [:]
+    private var hotKeys: [Registration: HotKey] = [:]
     private var nextRegistration: Registration = 1
     private var eventHandler: EventHandlerRef?
 
@@ -148,7 +151,13 @@ final class HotKeyCenter {
 
         references[registration] = reference
         handlers[registration] = handler
+        hotKeys[registration] = hotKey
         return registration
+    }
+
+    /// Whether another of Eyelid's own shortcuts has this one.
+    func isRegistered(_ hotKey: HotKey) -> Bool {
+        hotKeys.values.contains(hotKey)
     }
 
     func unregister(_ registration: Registration) {
@@ -156,5 +165,6 @@ final class HotKeyCenter {
             UnregisterEventHotKey(reference)
         }
         handlers[registration] = nil
+        hotKeys[registration] = nil
     }
 }

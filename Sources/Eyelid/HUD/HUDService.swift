@@ -34,6 +34,11 @@ struct HUDEvent: Equatable, Sendable {
         }
     }
 
+    /// Whether the icon is the speaker, whose waves follow the level.
+    var hasWaves: Bool {
+        kind == .volume && deviceIcon == .speaker
+    }
+
     /// Device icons have no muted variant, so they dim instead.
     var dimsIcon: Bool {
         kind == .volume && deviceIcon != .speaker && (isMuted || level == 0)
@@ -75,14 +80,25 @@ final class HUDService {
 
     /// How long after a key the watcher's report of the same volume is taken for Eyelid's own change.
     static let ownChangeWindow: Duration = .seconds(1)
+    /// After the Accessibility list changes, the tap stays off this long before access is checked again.
+    let accessSettleDelay: Duration
+
+    private var isEnabled = false
+    private var accessListObserver: NSObjectProtocol?
+    /// Ends once access is checked again after the list changed; tests wait on it.
+    private(set) var accessListTask: Task<Void, Never>?
 
     init(
         settings: AppSettings,
         access: AccessibilityAccess = AccessibilityAccess(),
         makeTap: (@escaping @MainActor (MediaKeyPress) -> Bool) -> any KeyTap = { MediaKeyTap(handler: $0) },
-        volumeWatcher: any VolumeWatching = VolumeWatcher()
+        volumeWatcher: any VolumeWatching = VolumeWatcher(),
+        accessSettleDelay: Duration = .milliseconds(500),
+        // Off in tests, which call `accessibilityListChanged` themselves: the real list can change while they run.
+        followsAccessList: Bool = true
     ) {
         self.settings = settings
+        self.accessSettleDelay = accessSettleDelay
         self.access = access
         self.volumeWatcher = volumeWatcher
         tap = makeTap { [weak self] press in
@@ -91,12 +107,42 @@ final class HUDService {
         volumeWatcher.onChange = { [weak self] device, state in
             self?.volumeChangedElsewhere(device, state)
         }
+        // macOS posts this whenever the Accessibility list in System Settings changes. Taking Eyelid's access away
+        // while its tap runs can stall input across the Mac, so the tap stops at once, before any check.
+        guard followsAccessList else { return }
+        accessListObserver = DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("com.apple.accessibility.api"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.accessibilityListChanged()
+            }
+        }
+    }
+
+    /// Stops the tap right away, then starts it again once access is settled, if Eyelid still has it.
+    func accessibilityListChanged() {
+        guard isEnabled else { return }
+        if tap.isRunning {
+            tap.stop()
+            logger.info("The Accessibility list changed, so the key tap is off until access is checked again")
+        }
+        accessListTask?.cancel()
+        accessListTask = Task { [weak self, accessSettleDelay] in
+            try? await Task.sleep(for: accessSettleDelay)
+            guard !Task.isCancelled else { return }
+            self?.followAccess()
+        }
     }
 
     /// Starts handling the keys, or waits for the Accessibility permission first.
     func setEnabled(_ enabled: Bool) {
+        isEnabled = enabled
         accessTask?.cancel()
         accessTask = nil
+        accessListTask?.cancel()
+        accessListTask = nil
 
         guard enabled else {
             tap.stop()
@@ -160,7 +206,11 @@ final class HUDService {
         guard SystemVolume.apply(new, from: state, on: device) else { return false }
 
         ownVolume = (new, .now)
-        showVolume(new, of: device)
+        // The tap waits for this callback, and with it every key on the Mac. Reading the headphones' charge for the
+        // HUD can take a while, so it happens after the key is handled.
+        Task { @MainActor [weak self] in
+            self?.showVolume(new, of: device)
+        }
         return true
     }
 

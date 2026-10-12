@@ -10,6 +10,8 @@ final class NotchCoordinator {
     private let battery: BatteryService
     private let shelf: Shelf
     private let clipboard: ClipboardHistory
+    private let translator: Translator
+    private let appVolumes: AppVolumes
     private let settings: AppSettings
     private var controllers: [NotchWindowController] = []
     private var pointerMonitors: [Any] = []
@@ -25,6 +27,10 @@ final class NotchCoordinator {
         clipboard: ClipboardHistory,
         clipboardShortcut: Shortcut,
         lidShortcut: Shortcut,
+        translator: Translator,
+        appVolumes: AppVolumes,
+        doubleCopy: DoubleCopyWatcher,
+        translationShortcut: Shortcut,
         hud: HUDService,
         settings: AppSettings
     ) {
@@ -33,6 +39,8 @@ final class NotchCoordinator {
         self.battery = battery
         self.shelf = shelf
         self.clipboard = clipboard
+        self.translator = translator
+        self.appVolumes = appVolumes
         self.settings = settings
 
         pointerDisplay = NSScreen.withPointer?.displayID
@@ -68,12 +76,18 @@ final class NotchCoordinator {
         clipboardShortcut.onPress = { [weak self] in
             self?.toggleClipboard()
         }
+        doubleCopy.onDoubleCopy = { [weak self] in
+            self?.translateCopiedText()
+        }
+        translationShortcut.onPress = { [weak self] in
+            self?.toggleTranslator()
+        }
     }
 
     /// The notch on the display with the pointer, which is where the user is looking.
     private var activeNotch: NotchWindowController? {
         let pointer = NSEvent.mouseLocation
-        return controllers.first { $0.screenFrame.contains(pointer) } ?? controllers.first
+        return controllers.first { $0.screenFrame.containsPointer(pointer) } ?? controllers.first
     }
 
     /// Hides the live activity and track titles, or shows them again. They stay hidden across launches.
@@ -88,6 +102,24 @@ final class NotchCoordinator {
         } else {
             activeNotch?.toggleClipboard()
         }
+    }
+
+    /// Opens the translator to type in where the user is looking, or closes it wherever it's open.
+    private func toggleTranslator() {
+        guard translator.isAvailable else { return }
+        if let open = controllers.first(where: \.isTypingTranslation) {
+            open.toggleTranslator()
+        } else {
+            activeNotch?.toggleTranslator()
+        }
+    }
+
+    /// Translates what was copied, and shows it where the user is looking. Not what's copied in the translator's own
+    /// field, which is there already.
+    private func translateCopiedText() {
+        guard !controllers.contains(where: \.isTypingTranslation) else { return }
+        translator.translateCopiedText()
+        activeNotch?.showTranslation()
     }
 
     // MARK: - Displays
@@ -108,9 +140,11 @@ final class NotchCoordinator {
     /// notch is open, so it doesn't jump away from what the user is doing in it.
     private func followPointer() {
         let handler: @MainActor () -> Void = { [weak self] in
-            guard let self, let display = NSScreen.withPointer?.displayID, display != pointerDisplay else { return }
+            guard let self, let display = NSScreen.withPointer?.displayID, display != pointerDisplay,
+                  settings.notchDisplays == .automatic, !controllers.contains(where: \.isOpen)
+            else { return }
+            // Noted only once the notch can follow, so a pointer that moved while it was open is followed after.
             pointerDisplay = display
-            guard settings.notchDisplays == .automatic, !controllers.contains(where: \.isOpen) else { return }
             updateNotches()
         }
         let events: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
@@ -152,6 +186,8 @@ final class NotchCoordinator {
                     battery: battery,
                     shelf: shelf,
                     clipboard: clipboard,
+                    translator: translator,
+                    appVolumes: appVolumes,
                     settings: settings
                 ))
             }

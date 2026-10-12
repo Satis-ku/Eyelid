@@ -35,6 +35,22 @@ final class ClipboardHistory {
         case denied
         /// Eyelid has never read the pasteboard, so it isn't in System Settings yet.
         case notAskedYet
+
+        /// Whether Eyelid may read what other apps put on `pasteboard`. Since macOS 15.4 the user decides in Privacy
+        /// & Security → Paste from Other Apps.
+        init(_ pasteboard: NSPasteboard) {
+            guard #available(macOS 15.4, *) else {
+                self = .allowed
+                return
+            }
+            switch pasteboard.accessBehavior {
+            case .alwaysAllow: self = .allowed
+            case .alwaysDeny: self = .denied
+            case .default: self = .notAskedYet
+            case .ask: self = .ask
+            @unknown default: self = .ask
+            }
+        }
     }
 
     private(set) var entries: [ClipboardEntry] = []
@@ -60,16 +76,8 @@ final class ClipboardHistory {
         entries.count { $0.isPinned }
     }
 
-    /// Since macOS 15.4 the user decides in Privacy & Security → Paste from Other Apps.
     var access: Access {
-        guard #available(macOS 15.4, *) else { return .allowed }
-        switch pasteboard.accessBehavior {
-        case .alwaysAllow: return .allowed
-        case .alwaysDeny: return .denied
-        case .default: return .notAskedYet
-        case .ask: return .ask
-        @unknown default: return .ask
-        }
+        Access(pasteboard)
     }
 
     // MARK: - Watching the pasteboard
@@ -82,9 +90,14 @@ final class ClipboardHistory {
         guard isOn else { return }
 
         lastChangeCount = pasteboard.changeCount
+        // Nothing is read once the history is turned off, not even what was copied a moment before.
         monitorTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(500))
+            while true {
+                do {
+                    try await Task.sleep(for: .milliseconds(500), tolerance: .milliseconds(100))
+                } catch {
+                    return
+                }
                 self?.checkForChanges()
             }
         }

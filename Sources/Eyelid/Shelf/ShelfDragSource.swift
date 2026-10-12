@@ -77,7 +77,7 @@ final class ShelfTileMouseView: NSView {
 
     override var isFlipped: Bool { true }
 
-    // The notch never becomes key, so the first click has to count.
+    // The notch is mostly not key, so the first click has to count.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {

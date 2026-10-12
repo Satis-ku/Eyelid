@@ -8,7 +8,10 @@ enum ShelfThumbnails {
 
     /// The thumbnail if there is one already, otherwise the file's icon.
     static func image(for url: URL) -> NSImage {
-        cache.object(forKey: url as NSURL) ?? NSWorkspace.shared.icon(forFile: url.path(percentEncoded: false))
+        let path = url.path(percentEncoded: false)
+        return cache.object(forKey: url as NSURL)
+            ?? StandardRangeIcons.icon(forFile: path, points: 48)
+            ?? NSWorkspace.shared.icon(forFile: path)
     }
 
     /// Makes a thumbnail of the file's content, or returns nil if Quick Look has nothing better than the icon.
@@ -26,12 +29,9 @@ enum ShelfThumbnails {
         // Draws documents and images the way Finder does, with a page outline or a border.
         request.iconMode = true
 
-        let cgImage: CGImage? = await withCheckedContinuation { continuation in
-            QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, _ in
-                continuation.resume(returning: representation?.cgImage)
-            }
+        guard let cgImage = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request).cgImage else {
+            return nil
         }
-        guard let cgImage else { return nil }
 
         // Quick Look keeps the file's aspect ratio, so the thumbnail isn't always square.
         let image = NSImage(cgImage: cgImage, size: CGSize(width: CGFloat(cgImage.width) / 2, height: CGFloat(cgImage.height) / 2))

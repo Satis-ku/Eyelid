@@ -46,7 +46,7 @@ final class OutputService {
 
     func start() {
         defaultDeviceID = Self.defaultOutput()?.id
-        followAppleHeadphones(in: OutputDevice.all())
+        followActivitySetting()
         for device in appleHeadphones {
             earbudsInUse[device.id] = HeadphonesBattery.current(for: device)?.earbudsInUse
         }
@@ -139,21 +139,36 @@ final class OutputService {
 
     // MARK: - Earbuds going in and out
 
+    /// Looks at the earbuds every so often only while the notch shows them going in and out.
+    private func followActivitySetting() {
+        withObservationTracking {
+            followAppleHeadphones(in: OutputDevice.all())
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.followActivitySetting()
+            }
+        }
+    }
+
     /// Watches the connected Apple and Beats headphones, and stops once there are none.
     private func followAppleHeadphones(in devices: [OutputDevice]) {
         appleHeadphones = devices.filter { $0.transport == .bluetooth && $0.appleProductID != nil }
         let connected = Set(appleHeadphones.map(\.id))
         earbudsInUse = earbudsInUse.filter { connected.contains($0.key) }
 
-        guard !appleHeadphones.isEmpty else {
+        guard !appleHeadphones.isEmpty, settings.outputActivityEnabled else {
             watchTask?.cancel()
             watchTask = nil
             return
         }
         guard watchTask == nil else { return }
         watchTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: Self.earbudsInterval)
+            while true {
+                do {
+                    try await Task.sleep(for: Self.earbudsInterval, tolerance: .milliseconds(500))
+                } catch {
+                    return
+                }
                 self?.checkEarbuds()
             }
         }

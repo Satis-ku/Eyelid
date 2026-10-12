@@ -9,6 +9,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var output = OutputService(settings: settings)
     let shelf = Shelf()
     let clipboard = ClipboardHistory(pinnedFile: ClipboardHistory.defaultPinnedFile)
+    private(set) lazy var translator = Translator(settings: settings)
+    private let doubleCopy = DoubleCopyWatcher()
+    private let appVolumes = AppVolumes()
     private let hotKeys = HotKeyCenter()
     private(set) lazy var clipboardShortcut = Shortcut(
         center: hotKeys,
@@ -19,6 +22,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         center: hotKeys,
         isEnabled: { [settings] in settings.liveActivityShortcutEnabled },
         hotKey: { [settings] in settings.liveActivityHotKey }
+    )
+    private(set) lazy var translationShortcut = Shortcut(
+        center: hotKeys,
+        // On Macs that can't translate, ⌥T stays free.
+        isEnabled: { [settings, translator] in settings.translationShortcutEnabled && translator.isAvailable },
+        hotKey: { [settings] in settings.translationHotKey }
     )
     private lazy var hud = HUDService(settings: settings)
     private var notches: NotchCoordinator?
@@ -33,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         audioLevels.start()
         battery.start()
         output.start()
+        appVolumes.start()
         shelf.deleteUnusedPromisedFiles()
         notches = NotchCoordinator(
             nowPlaying: nowPlaying,
@@ -43,11 +53,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             clipboard: clipboard,
             clipboardShortcut: clipboardShortcut,
             lidShortcut: lidShortcut,
+            translator: translator,
+            appVolumes: appVolumes,
+            doubleCopy: doubleCopy,
+            translationShortcut: translationShortcut,
             hud: hud,
             settings: settings
         )
         followHUDSetting()
         followClipboardSetting()
+        followTranslationSetting()
+        followEqualizerSetting()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -79,6 +95,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.followClipboardSetting()
+            }
+        }
+    }
+
+    /// While the equalizer follows the sound, macOS shows the recording indicator anyway, so every app playing goes
+    /// through Eyelid, and changing an app's volume never switches its sound between paths. Not while the equalizer
+    /// can't be seen, such as with the live activity hidden: then Eyelid listens to nothing it doesn't have to.
+    private func followEqualizerSetting() {
+        withObservationTracking {
+            appVolumes.setRoutesPlayingApps(
+                settings.equalizerFollowsAudio && AudioProperty.canTapProcesses && audioLevels.isEqualizerVisible,
+                // Nobody sees the recording indicator while the displays sleep, and music often plays on.
+                whenQuiet: audioLevels.isDisplayAsleep
+            )
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.followEqualizerSetting()
+            }
+        }
+    }
+
+    /// Watches for text copied twice while that translates it, on Macs that can.
+    private func followTranslationSetting() {
+        withObservationTracking {
+            doubleCopy.setWatching(settings.translatesOnDoubleCopy && translator.isAvailable)
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.followTranslationSetting()
             }
         }
     }

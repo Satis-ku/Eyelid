@@ -12,7 +12,7 @@ Use the issue forms: they ask for what's usually needed, such as the Eyelid and 
 
 [Build from source](README.md#build-from-source) in the README covers what you need and the `make` commands. `make test` runs the unit tests.
 
-- **Tests** cover what can be checked without a screen: decoding the adapter's output and early titles, playback time, the artwork wait and color, the track title's layout and timing, the equalizer's bands, battery events, media keys and level steps, volume set elsewhere, device icons, notch layout, outline and hover areas, settings, and artwork limits.
+- **Tests** cover what can be checked without a screen: decoding the adapter's output and early titles, playback time and seeking, the artwork wait and color, the track title's layout and timing, the equalizer's bands, battery events, media keys and level steps, volume set elsewhere, device icons, the notch's layout, sections, outline and hover areas, the shelf and drops, the clipboard history and its keys, app volumes and their taps, each app's equalizer, the translator and double copies, shortcuts, settings, and artwork limits.
 - **On a real Mac:** hovering, haptics, animations and the look of the notch still need a try. Mention what you checked in your pull request.
 
 ## Making a change

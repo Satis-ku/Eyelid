@@ -1,3 +1,4 @@
+import AppKit
 import CoreAudio
 import Observation
 import os
@@ -19,6 +20,9 @@ final class AudioLevels {
     @ObservationIgnored private var outputListener: AudioObjectPropertyListenerBlock?
     /// Since when the tap has heard only silence.
     @ObservationIgnored private var silentSince: ContinuousClock.Instant?
+    /// Whether the displays are asleep, when nobody sees the equalizer.
+    private(set) var isDisplayAsleep = false
+    @ObservationIgnored private var sleepObservers: [NSObjectProtocol] = []
 
     /// How often the bars move, a second.
     static let frameRate = 30.0
@@ -28,16 +32,23 @@ final class AudioLevels {
     /// Silence this long, while something plays, means Eyelid isn't allowed to hear it.
     static let silenceTimeout: Duration = .seconds(2)
 
-    static var isSupported: Bool {
-        if #available(macOS 14.2, *) { true } else { false }
-    }
-
     init(settings: AppSettings, nowPlaying: NowPlayingService) {
         self.settings = settings
         self.nowPlaying = nowPlaying
     }
 
     func start() {
+        let center = NSWorkspace.shared.notificationCenter
+        for (name, isAsleep) in [
+            (NSWorkspace.screensDidSleepNotification, true),
+            (NSWorkspace.screensDidWakeNotification, false),
+        ] {
+            sleepObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.isDisplayAsleep = isAsleep
+                }
+            })
+        }
         follow()
         let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             MainActor.assumeIsolated {
@@ -50,8 +61,16 @@ final class AudioLevels {
         }
     }
 
+    /// Whether the equalizer could be seen: the live activity is on and not hidden, and the displays are awake. When
+    /// it can't, Eyelid doesn't listen to the system's sound for it, and macOS shows no recording indicator for it.
+    var isEqualizerVisible: Bool {
+        settings.showsLiveActivity && !settings.isLiveActivityHidden && !isDisplayAsleep
+    }
+
+    /// Not for a muted preview either, which reports playing but sends no sound, and doesn't show the equalizer.
     private var shouldListen: Bool {
-        settings.equalizerFollowsAudio && nowPlaying.track?.isPlaying == true
+        settings.equalizerFollowsAudio && isEqualizerVisible && nowPlaying.track?.isPlaying == true
+            && !nowPlaying.isSilent
     }
 
     /// Listens while the setting is on and something plays, and not otherwise.
@@ -79,14 +98,21 @@ final class AudioLevels {
         logger.debug("Listening for the equalizer")
         silentSince = nil
         pollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1 / Self.frameRate))
+            while let interval = self?.pollInterval {
+                do {
+                    try await Task.sleep(for: interval)
+                } catch {
+                    return
+                }
                 self?.poll(tap)
             }
         }
     }
 
     private func stopListening() {
+        if tap != nil {
+            logger.debug("Stopped listening for the equalizer")
+        }
         pollTask?.cancel()
         pollTask = nil
         if #available(macOS 14.2, *) {
@@ -96,9 +122,15 @@ final class AudioLevels {
         levels = nil
     }
 
+    /// A frame of the bars, or less often while all that's heard is silence and the bars move on their own.
+    private var pollInterval: Duration {
+        levels == nil && silentSince != nil ? .milliseconds(250) : .seconds(1 / Self.frameRate)
+    }
+
     @available(macOS 14.2, *)
     private func poll(_ tap: SystemAudioTap) {
-        let heard = tap.levels.withLock { $0 }.map { Double($0) }
+        // Copied inside the lock, so the tap never has to copy the array it writes to.
+        let heard = tap.levels.withLock { $0.map(Double.init) }
         if heard.allSatisfy({ $0 == 0 }) {
             let now = ContinuousClock.now
             let since = silentSince ?? now

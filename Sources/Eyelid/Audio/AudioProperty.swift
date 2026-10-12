@@ -2,6 +2,11 @@ import CoreAudio
 
 /// Reading and writing CoreAudio object properties.
 enum AudioProperty {
+    /// Whether this Mac can tap apps' sound, for the equalizer and for apps' own volumes: macOS 14.2 and later.
+    static var canTapProcesses: Bool {
+        if #available(macOS 14.2, *) { true } else { false }
+    }
+
     static func address(
         _ selector: AudioObjectPropertySelector,
         _ scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal

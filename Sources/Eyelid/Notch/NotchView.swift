@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NotchView: View {
     let model: NotchViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let animation = Animation.spring(response: 0.42, dampingFraction: 0.82)
 
@@ -25,6 +26,8 @@ struct NotchView: View {
             .animation(animation, value: model.output == nil)
             .animation(animation, value: model.hud == nil)
             .animation(animation, value: model.isShowingTrackTitle)
+            // The notch grows as the translation comes in.
+            .animation(animation, value: model.translator.request?.outcome)
             // The next title replaces the last one in place, title and artist together.
             .animation(.easeInOut(duration: 0.25), value: model.trackTitle?.id)
             .environment(\.colorScheme, .dark)
@@ -35,7 +38,7 @@ struct NotchView: View {
         switch model.state {
         case .open:
             OpenNotchView(model: model)
-                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
         case .closed:
             VStack(spacing: 0) {
                 ZStack {
@@ -75,7 +78,17 @@ struct NotchView: View {
             BatteryActivityView(event: event, notchSize: model.geometry.notchSize)
                 .transition(.opacity)
         } else if model.showsNowPlayingActivity, let track = model.nowPlaying.track {
-            ClosedActivityView(track: track, notchSize: model.geometry.notchSize, levels: model.audioLevels.levels)
+            ClosedActivityView(
+                track: track,
+                notchSize: model.geometry.notchSize,
+                audioLevels: model.audioLevels,
+                isEqualizerHovered: model.isHoveringEqualizer
+            ) {
+                model.openSound()
+            }
+                .transition(.opacity)
+        } else if model.showsIdleActivity {
+            IdleActivityView(battery: model.battery.state, notchSize: model.geometry.notchSize)
                 .transition(.opacity)
         }
     }
@@ -86,21 +99,26 @@ private struct OpenNotchView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // The strip beside the hardware notch: the volume and brightness HUD in the same places as
-            // in the closed notch, otherwise the tabs on the left and the battery on the right.
+            // The strip beside the hardware notch: the volume and brightness HUD in the same places as in the closed
+            // notch, otherwise the section on the left, which opens the menu of all sections, and the battery on the
+            // right.
             ZStack {
                 if let hud = model.hud {
                     HUDView(event: hud, style: model.settings.hudLevelStyle, notchSize: model.geometry.notchSize)
                         .transition(.opacity)
                 } else {
-                    HStack {
-                        if model.settings.shelfEnabled || model.settings.clipboardEnabled {
-                            NotchTabs(model: model)
+                    HStack(spacing: 0) {
+                        SectionTitle(
+                            section: model.currentSection,
+                            systemImage: model.systemImage(for: model.currentSection),
+                            isMenuShown: model.showsSectionMenu
+                        ) {
+                            model.showsSectionMenu.toggle()
                         }
-                        Spacer()
-                        if let battery = model.battery.state {
-                            BatteryIndicator(state: battery)
-                        }
+                        .frame(maxWidth: model.statusWidth, alignment: .leading)
+                        Spacer(minLength: 0)
+                        OpenNotchStatus(battery: model.battery.state, showsDate: model.settings.showsDateInOpenNotch)
+                            .frame(maxWidth: model.statusWidth, alignment: .trailing)
                     }
                     .transition(.opacity)
                 }
@@ -109,71 +127,51 @@ private struct OpenNotchView: View {
             .animation(.easeOut(duration: 0.15), value: model.hud == nil)
 
             Group {
-                if model.showsShelf {
-                    ShelfView(model: model)
-                } else if model.showsClipboard {
-                    ClipboardView(model: model)
-                } else if let track = model.nowPlaying.track {
-                    NowPlayingCard(track: track, nowPlaying: model.nowPlaying)
+                if model.showsSectionMenu {
+                    SectionMenu(model: model)
                 } else {
-                    Label("Nothing is playing", systemImage: "music.note")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.5))
+                    section
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.bottom, NotchViewModel.Layout.openBottomPadding)
+            .animation(.easeOut(duration: 0.15), value: model.showsSectionMenu)
+
+            SectionDock(model: model)
+                .frame(height: NotchViewModel.Layout.dockHeight)
         }
-        .padding(.horizontal, 18)
-        .padding(.bottom, 14)
+        .padding(.horizontal, NotchViewModel.Layout.openHorizontalPadding)
     }
-}
 
-/// Switches the open notch between now playing, the shelf and the clipboard history.
-private struct NotchTabs: View {
-    let model: NotchViewModel
-
-    var body: some View {
-        HStack(spacing: 2) {
-            TabButton(title: "Now Playing", systemImage: "music.note", isSelected: model.tab == .nowPlaying) {
-                model.tab = .nowPlaying
-            }
-            if model.settings.shelfEnabled {
-                TabButton(
-                    title: "Shelf",
-                    systemImage: model.shelf.items.isEmpty ? "tray" : "tray.full",
-                    isSelected: model.tab == .shelf
-                ) {
-                    model.tab = .shelf
+    @ViewBuilder
+    private var section: some View {
+        switch model.currentSection {
+        case .shelf:
+            ShelfView(model: model)
+        case .clipboard:
+            ClipboardView(model: model)
+        case .sound:
+            SoundPanel(sound: model.sound, appVolumes: model.appVolumes, settings: model.settings)
+        case .translation:
+            TranslationPanel(
+                translator: model.translator,
+                isTyping: model.isTypingTranslation,
+                translatesOnDoubleCopy: model.settings.translatesOnDoubleCopy,
+                beginTyping: model.typeTranslation
+            )
+        case .nowPlaying:
+            if let track = model.nowPlaying.track {
+                NowPlayingCard(track: track, nowPlaying: model.nowPlaying)
+            } else {
+                // As the shelf and the clipboard say they're empty.
+                VStack(spacing: 6) {
+                    Image(systemName: "music.note")
+                        .font(.system(size: 20, weight: .medium))
+                    Text("Nothing is playing")
+                        .font(.system(size: 12, weight: .medium))
                 }
-            }
-            if model.settings.clipboardEnabled {
-                TabButton(title: "Clipboard", systemImage: "doc.on.clipboard", isSelected: model.tab == .clipboard) {
-                    model.resetClipboard()
-                    model.tab = .clipboard
-                }
+                .foregroundStyle(.white.opacity(0.5))
             }
         }
-    }
-}
-
-private struct TabButton: View {
-    let title: String
-    let systemImage: String
-    let isSelected: Bool
-    let action: @MainActor () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(isSelected ? 1 : 0.45))
-                .frame(width: 28, height: 22)
-                .background(Capsule().fill(.white.opacity(isSelected ? 0.14 : 0)))
-                .contentShape(Capsule())
-        }
-        .buttonStyle(PressableButtonStyle())
-        .accessibilityLabel(title)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .animation(.easeOut(duration: 0.15), value: isSelected)
     }
 }

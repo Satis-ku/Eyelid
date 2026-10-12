@@ -1,5 +1,4 @@
 import AppKit
-import Carbon.HIToolbox
 import os
 
 private let logger = Logger(subsystem: "io.github.satis-ku.eyelid", category: "Notch")
@@ -18,9 +17,12 @@ final class NotchWindowController {
     private var hudTask: Task<Void, Never>?
     private var outputTask: Task<Void, Never>?
     private var trackTitleTask: Task<Void, Never>?
+    /// Closes a translation nobody looked at, once it has had time to be read.
+    private var translationTask: Task<Void, Never>?
     /// The drag pasteboard changes when a drag starts, which tells drags apart from other mouse moves.
     private var dragPasteboardChangeCount = NSPasteboard(name: .drag).changeCount
-    /// Handles the arrow keys, Return, Delete and Escape while the clipboard history has the keyboard.
+    /// Handles the keys while the notch has the keyboard: the arrow keys, Return, Delete and Escape for the clipboard
+    /// history, and Escape and the editing shortcuts for the translator's field.
     private var keyMonitor: Any?
 
     init(
@@ -30,6 +32,8 @@ final class NotchWindowController {
         battery: BatteryService,
         shelf: Shelf,
         clipboard: ClipboardHistory,
+        translator: Translator,
+        appVolumes: AppVolumes,
         settings: AppSettings
     ) {
         self.settings = settings
@@ -40,6 +44,8 @@ final class NotchWindowController {
             battery: battery,
             shelf: shelf,
             clipboard: clipboard,
+            translator: translator,
+            appVolumes: appVolumes,
             settings: settings
         )
 
@@ -56,8 +62,17 @@ final class NotchWindowController {
         model.close = { [weak self] in
             self?.close()
         }
+        model.releaseHold = { [weak self] in
+            self?.releaseHold()
+        }
         model.pasteIntoFrontApp = {
             Paster.paste()
+        }
+        model.openSound = { [weak self] in
+            self?.openSound()
+        }
+        model.typeTranslation = { [weak self] in
+            self?.beginTypingTranslation()
         }
         // Clicking another window takes the keyboard away from the clipboard history, which then goes away.
         observers.append(NotificationCenter.default.addObserver(
@@ -86,7 +101,7 @@ final class NotchWindowController {
             NotificationCenter.default.removeObserver(observer)
         }
         observers = []
-        for task in [openTask, pollTask, batteryEventTask, hudTask, outputTask, trackTitleTask] {
+        for task in [openTask, pollTask, batteryEventTask, hudTask, outputTask, trackTitleTask, translationTask] {
             task?.cancel()
         }
         panel.orderOut(nil)
@@ -127,6 +142,10 @@ final class NotchWindowController {
     // MARK: - Volume and brightness
 
     func show(_ event: HUDEvent) {
+        // The Sound section shows the volume already, and moves with the slider.
+        if event.kind == .volume, model.state == .open, model.currentSection == .sound {
+            return
+        }
         dismissTrackTitle()
         model.hud = event
         // Holding a key repeats it, so the HUD stays until the last press plus the duration.
@@ -169,9 +188,12 @@ final class NotchWindowController {
 
     // MARK: - Track title
 
-    /// Drops the lower lid to run what started playing along it. The open notch shows the track in full already.
+    /// Drops the lower lid to run what started playing along it. The open notch shows the track in full already. Not
+    /// with Reduce Motion on: the live activity still shows that something plays.
     func showTrackTitle() {
-        guard model.state == .closed, !settings.isLiveActivityHidden else { return }
+        guard model.state == .closed, !settings.isLiveActivityHidden,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        else { return }
         let title = TrackTitle()
         model.trackTitle = title
         // The title ends itself once it has run past. This is in case it never shows, behind the HUD for one.
@@ -188,6 +210,56 @@ final class NotchWindowController {
         trackTitleTask?.cancel()
         trackTitleTask = nil
         model.trackTitle = nil
+    }
+
+    // MARK: - Translation
+
+    /// Opens the translator with the keyboard, wherever the pointer is, to type or paste text; or closes it.
+    func toggleTranslator() {
+        if model.isTypingTranslation {
+            close()
+            return
+        }
+        beginTypingTranslation()
+    }
+
+    /// Gives the translation's field the keyboard, and holds the notch open until Escape or a click elsewhere.
+    private func beginTypingTranslation() {
+        model.isTranslationHeld = false
+        translationTask?.cancel()
+        translationTask = nil
+        if model.state == .open {
+            model.select(.translation)
+        } else {
+            open(on: .translation)
+        }
+        model.isHeldOpen = true
+        takeKeyboard()
+    }
+
+    /// Opens the notch on the translation of what was just copied, wherever the pointer is. It stays open until the
+    /// pointer has been over it and left, or a click elsewhere, or for as long as it takes to read if neither comes.
+    func showTranslation() {
+        if model.isHeldOpen {
+            close()
+        }
+        open(on: .translation)
+        model.isTranslationHeld = true
+
+        let readingTime = NotchViewModel.Layout.translationReadingTime(for: model.translator.request?.text ?? "")
+        translationTask?.cancel()
+        translationTask = Task { [weak self] in
+            try? await Task.sleep(for: readingTime)
+            guard !Task.isCancelled, let self, model.isTranslationHeld else { return }
+            close()
+        }
+    }
+
+    // MARK: - Sound
+
+    /// Opens the notch on the Sound section, after a click on the equalizer.
+    private func openSound() {
+        open(on: .sound)
     }
 
     // MARK: - Hover
@@ -220,8 +292,8 @@ final class NotchWindowController {
         switch type {
         case .leftMouseDown:
             dragPasteboardChangeCount = NSPasteboard(name: .drag).changeCount
-            // A click anywhere else puts away the clipboard history, as with a menu.
-            if model.isHeldOpen, !model.bodyRect.contains(NSEvent.mouseLocation) {
+            // A click anywhere else puts away the clipboard history, as with a menu, and a translation.
+            if model.isHeldOpen || model.isTranslationHeld, !model.bodyRect.containsPointer(NSEvent.mouseLocation) {
                 close()
             }
         case .leftMouseDragged:
@@ -249,7 +321,20 @@ final class NotchWindowController {
             model.isDraggingFiles = false
         }
 
-        let isInside = model.hoverRect.contains(NSEvent.mouseLocation)
+        let pointer = NSEvent.mouseLocation
+        // The equalizer takes clicks, for the Sound section, rather than opening the notch on hover.
+        let isOverEqualizer = model.equalizerRect?.containsPointer(pointer) == true
+        // On every mouse move, so set only when it changes: each set goes to the window server.
+        if model.state == .closed, panel.ignoresMouseEvents == isOverEqualizer {
+            panel.ignoresMouseEvents = !isOverEqualizer
+        }
+        if isOverEqualizer != model.isHoveringEqualizer {
+            model.isHoveringEqualizer = isOverEqualizer
+            if isOverEqualizer, settings.hapticsEnabled {
+                NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+            }
+        }
+        let isInside = model.hoverRect.containsPointer(pointer) && !isOverEqualizer
         switch (model.state, isInside) {
         case (.closed, true):
             scheduleOpen()
@@ -257,11 +342,14 @@ final class NotchWindowController {
             openTask?.cancel()
             openTask = nil
         case (.open, false):
-            if !model.isHeldOpen {
+            if !model.isHeldOpen, !model.isTranslationHeld {
                 close()
             }
         case (.open, true):
-            break
+            // Once the pointer has been over a translation, it closes as the notch always does.
+            if model.isTranslationHeld {
+                model.isTranslationHeld = false
+            }
         }
     }
 
@@ -281,15 +369,22 @@ final class NotchWindowController {
         }
     }
 
-    private func open() {
+    /// Opens on `section` when there's a reason for it: a shortcut, or a click on the equalizer. Otherwise on the
+    /// shelf for files being dragged, on Now Playing while something is heard, and on the last section otherwise.
+    private func open(on section: NotchSection? = nil) {
         logger.debug("Opened")
         openTask?.cancel()
         openTask = nil
         dismissTrackTitle()
+        model.showsSectionMenu = false
+        if let section {
+            model.selectedSection = section
+        } else if settings.shelfEnabled, model.isDraggingFiles {
+            model.selectedSection = .shelf
+        } else if model.nowPlaying.track?.isPlaying == true, !model.nowPlaying.isSilent {
+            model.selectedSection = .nowPlaying
+        }
         if settings.shelfEnabled {
-            if model.isDraggingFiles {
-                model.tab = .shelf
-            }
             model.shelf.refresh()
         }
         model.state = .open
@@ -301,8 +396,12 @@ final class NotchWindowController {
         // While the cursor is over the panel, global monitors go quiet, so poll to notice it leaving.
         pollTask?.cancel()
         pollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(100))
+            while true {
+                do {
+                    try await Task.sleep(for: .milliseconds(100))
+                } catch {
+                    return
+                }
                 self?.updateHover()
             }
         }
@@ -310,13 +409,19 @@ final class NotchWindowController {
 
     private func close() {
         logger.debug("Closed")
-        let wasPinned = model.isHeldOpen
+        let wasHeld = model.isHeldOpen
         model.state = .closed
+        model.showsSectionMenu = false
         model.isDropTargeted = false
         model.isHeldOpen = false
-        if wasPinned {
+        if wasHeld {
             giveUpKeyboard()
         }
+        // A search or a preview would greet the next hover, with no keyboard to clear it.
+        model.resetClipboard()
+        model.isTranslationHeld = false
+        translationTask?.cancel()
+        translationTask = nil
         panel.ignoresMouseEvents = true
         pollTask?.cancel()
         pollTask = nil
@@ -333,37 +438,51 @@ extension NotchWindowController {
 
     /// Whether the clipboard history is open and holding the notch open.
     var isHoldingClipboardOpen: Bool {
-        model.isHeldOpen
+        model.isHeldOpen && model.currentSection == .clipboard
+    }
+
+    /// Whether the translation's field has the keyboard.
+    var isTypingTranslation: Bool {
+        model.isTypingTranslation
     }
 
     /// The clipboard shortcut opens the history, wherever the pointer is, and closes it again.
     func toggleClipboard() {
-        if model.isHeldOpen {
+        if isHoldingClipboardOpen {
             close()
             return
         }
         guard settings.clipboardEnabled else { return }
 
         logger.debug("Opened the clipboard history")
-        model.tab = .clipboard
         model.resetClipboard()
         model.isHeldOpen = true
-        open()
+        open(on: .clipboard)
         takeKeyboard()
     }
 
-    /// Makes the panel key, so the arrow keys, Return, Delete and Escape reach the history, and only while it's
-    /// open: the app in front stays active, and no other app loses those keys.
+    /// Makes the panel key, so keys reach the clipboard history or the translator's field, and only while the notch
+    /// is held open for them: the app in front stays active, and gets the keyboard back after.
     private func takeKeyboard() {
+        guard keyMonitor == nil else { return }
         panel.allowsKey = true
         panel.makeKey()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             let key = ClipboardKey(event: event)
+            let editing = TextEditingKey(event: event)
             let isHandled = MainActor.assumeIsolated {
-                self?.handle(key) ?? false
+                self?.handle(key, editing: editing) ?? false
             }
             return isHandled ? nil : event
         }
+    }
+
+    /// Lets the notch follow the pointer again, and the keyboard go back to the app in front, for a section that
+    /// takes no typing.
+    private func releaseHold() {
+        guard model.isHeldOpen else { return }
+        model.isHeldOpen = false
+        giveUpKeyboard()
     }
 
     private func giveUpKeyboard() {
@@ -380,7 +499,19 @@ extension NotchWindowController {
         }
     }
 
-    private func handle(_ key: ClipboardKey) -> Bool {
+    private func handle(_ key: ClipboardKey, editing: TextEditingKey?) -> Bool {
+        // The translation's field takes the keys itself, but for Escape, which closes the notch, and the editing
+        // shortcuts, which it gets from here.
+        guard model.currentSection == .clipboard else {
+            if key == .escape {
+                close()
+                return true
+            }
+            if let editing {
+                return NSApp.sendAction(editing.action, to: nil, from: nil)
+            }
+            return false
+        }
         switch key {
         case .up:
             model.moveClipboardSelection(by: -1)
@@ -428,7 +559,7 @@ extension NotchWindowController: NotchDropDelegate {
         let operation = acceptedOperation(for: drag)
         model.isDropTargeted = operation != []
         if operation != [] {
-            model.tab = .shelf
+            model.selectedSection = .shelf
         }
         return operation
     }

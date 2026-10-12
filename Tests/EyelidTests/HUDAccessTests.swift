@@ -18,7 +18,7 @@ final class FakeVolumeWatcher: VolumeWatching {
 }
 
 @MainActor
-@Suite("Accessibility access for the HUD")
+@Suite("Accessibility access for the HUD", .timeLimit(.minutes(1)))
 struct HUDAccessTests {
     /// Stands in for System Settings.
     final class Permission {
@@ -61,7 +61,9 @@ struct HUDAccessTests {
                 request: { permission.requests += 1 }
             ),
             makeTap: { _ in tap },
-            volumeWatcher: FakeVolumeWatcher()
+            volumeWatcher: FakeVolumeWatcher(),
+            accessSettleDelay: .milliseconds(10),
+            followsAccessList: false
         )
     }
 
@@ -72,6 +74,31 @@ struct HUDAccessTests {
 
         #expect(tap.isRunning)
         #expect(permission.requests == 0)
+    }
+
+    /// Taking access away while the tap runs can stall input across the Mac, so any change to the list stops it first.
+    @Test func stopsAtOnceWhenTheAccessibilityListChanges() async {
+        permission.isGranted = true
+        hud.setEnabled(true)
+        #expect(tap.isRunning)
+
+        permission.isGranted = false
+        hud.accessibilityListChanged()
+
+        #expect(!tap.isRunning)
+        await hud.accessListTask?.value
+        #expect(!tap.isRunning)
+    }
+
+    @Test func startsAgainIfAccessStayedAfterTheListChanged() async {
+        permission.isGranted = true
+        hud.setEnabled(true)
+
+        hud.accessibilityListChanged()
+
+        #expect(!tap.isRunning)
+        await hud.accessListTask?.value
+        #expect(tap.isRunning)
     }
 
     @Test func asksOnceAndStartsWhenAccessIsGranted() {
@@ -132,7 +159,8 @@ struct HUDVolumeElsewhereTests {
             settings: AppSettings(defaults: InMemorySettingsStore()),
             access: AccessibilityAccess(isGranted: { true }, request: {}),
             makeTap: { _ in HUDAccessTests.FakeTap(permission: HUDAccessTests.Permission()) },
-            volumeWatcher: watcher
+            volumeWatcher: watcher,
+            followsAccessList: false
         )
     }
 

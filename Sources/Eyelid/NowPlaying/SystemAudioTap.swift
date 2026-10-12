@@ -23,11 +23,18 @@ final class SystemAudioTap: @unchecked Sendable {
     private var mono = [Float](repeating: 0, count: 8_192)
     private var measured = [Float](repeating: 0, count: SpectrumAnalyzer.bands.count)
 
-    /// Starts listening, through the current default output. Returns false if Core Audio refuses.
+    /// Starts listening. Returns false if Core Audio refuses.
+    ///
+    /// The aggregate device holds the tap alone, with no output in it: with the output in, Eyelid took part in the
+    /// audio on that output, and Bluetooth's smart routing counted it as the app playing to AirPods, ahead of every
+    /// other. It then kept sound on them when another output was picked, and kept AirPods from switching to another
+    /// device.
     func start() -> Bool {
         stop()
 
-        let description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+        // Everything but Eyelid's own sound: an app at its own volume plays through Eyelid, and the tap would hear it
+        // twice, from the app, which it hears though macOS mutes it, and from Eyelid.
+        let description = CATapDescription(stereoGlobalTapButExcludeProcesses: Self.ownProcess.map { [$0] } ?? [])
         description.uuid = UUID()
         description.name = "Eyelid equalizer"
         description.isPrivate = true
@@ -38,20 +45,12 @@ final class SystemAudioTap: @unchecked Sendable {
             return false
         }
 
-        guard let output = AudioProperty.defaultOutputDevice(),
-              let outputUID = AudioProperty.string(AudioProperty.address(kAudioDevicePropertyDeviceUID), of: output)
-        else {
-            stop()
-            return false
-        }
         let aggregate: [String: Any] = [
             kAudioAggregateDeviceNameKey: "Eyelid equalizer",
-            kAudioAggregateDeviceUIDKey: UUID().uuidString,
-            kAudioAggregateDeviceMainSubDeviceKey: outputUID,
+            kAudioAggregateDeviceUIDKey: OutputDevice.ownDevicePrefix + UUID().uuidString,
             kAudioAggregateDeviceIsPrivateKey: true,
             kAudioAggregateDeviceIsStackedKey: false,
             kAudioAggregateDeviceTapAutoStartKey: true,
-            kAudioAggregateDeviceSubDeviceListKey: [[kAudioSubDeviceUIDKey: outputUID]],
             kAudioAggregateDeviceTapListKey: [[
                 kAudioSubTapDriftCompensationKey: true,
                 kAudioSubTapUIDKey: description.uuid.uuidString,
@@ -82,6 +81,23 @@ final class SystemAudioTap: @unchecked Sendable {
         }
         logger.debug("Listening at \(sampleRate, privacy: .public) Hz")
         return true
+    }
+
+    /// Eyelid's own process, as Core Audio knows it.
+    private static var ownProcess: AudioObjectID? {
+        var address = AudioProperty.address(kAudioHardwarePropertyTranslatePIDToProcessObject)
+        var pid = ProcessInfo.processInfo.processIdentifier
+        var object = AudioObjectID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioObjectID>.size)
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            UInt32(MemoryLayout<pid_t>.size),
+            &pid,
+            &size,
+            &object
+        )
+        return status == noErr && object != kAudioObjectUnknown ? object : nil
     }
 
     func stop() {

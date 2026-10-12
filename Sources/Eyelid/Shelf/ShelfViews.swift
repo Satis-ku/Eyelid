@@ -39,6 +39,8 @@ struct ShelfView: View {
                         shelf.removeAll()
                     }
                 }
+                // Clear of the outline that shows while files are dragged over.
+                .padding(.trailing, 6)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background {
@@ -57,7 +59,7 @@ private struct ShelfTile: View {
     @State private var thumbnail: NSImage?
 
     private static let imageSide: CGFloat = 48
-    private static let width: CGFloat = 70
+    private static let width: CGFloat = 76
     private static let padding: CGFloat = 4
 
     var body: some View {
@@ -68,11 +70,14 @@ private struct ShelfTile: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: Self.imageSide, height: Self.imageSide)
+            // One line, shrinking a little so a name like "Package.swift" shows whole: two lines broke such a name
+            // mid-word. Longer ones keep their start and their extension.
             Text(item.name)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.white.opacity(0.85))
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .minimumScaleFactor(0.9)
         }
         .padding(Self.padding)
         .frame(width: Self.width)
@@ -103,7 +108,7 @@ private struct AllFilesTile: View {
     let dragSource: ShelfDragSource
 
     private static let imageSide: CGFloat = 48
-    private static let width: CGFloat = 70
+    private static let width: CGFloat = 76
     private static let padding: CGFloat = 4
 
     var body: some View {
@@ -160,7 +165,7 @@ private struct ShelfButton<Label: View>: View {
             label()
                 .foregroundStyle(.white.opacity(0.7))
                 .frame(width: 22, height: 22)
-                .background(Circle().fill(.white.opacity(0.12)))
+                .background(.white.opacity(0.12), in: Circle())
                 .contentShape(Circle())
         }
         .buttonStyle(PressableButtonStyle())
@@ -182,7 +187,9 @@ private struct DropPrompt: View {
         }
         .foregroundStyle(.white.opacity(isTargeted ? 0.9 : 0.5))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(DropOutline(isTargeted: isTargeted))
+        .background { DropOutline(isTargeted: isTargeted) }
+        // Some room under the strip above, as there is above the dock.
+        .padding(.top, 6)
         .animation(.easeOut(duration: 0.15), value: isTargeted)
     }
 }

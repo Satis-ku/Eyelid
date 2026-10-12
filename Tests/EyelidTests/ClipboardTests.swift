@@ -69,8 +69,13 @@ struct ClipboardEntryTests {
 
 @MainActor
 @Suite("Clipboard history")
-struct ClipboardHistoryTests {
+final class ClipboardHistoryTests {
     private let pasteboard = NSPasteboard.withUniqueName()
+
+    isolated deinit {
+        // Named pasteboards stay in the pasteboard server until released.
+        pasteboard.releaseGlobally()
+    }
 
     private func copy(_ text: String, marker: NSPasteboard.PasteboardType? = nil) {
         let item = NSPasteboardItem()
@@ -80,6 +85,11 @@ struct ClipboardHistoryTests {
         }
         pasteboard.clearContents()
         pasteboard.writeObjects([item])
+    }
+
+    /// The entry at `index`, stopping the test, rather than the whole run, if there's none.
+    private func entry(_ index: Int, of history: ClipboardHistory) throws -> ClipboardEntry {
+        try #require(history.entries.dropFirst(index).first)
     }
 
     private func titles(_ history: ClipboardHistory) -> [String] {
@@ -127,11 +137,11 @@ struct ClipboardHistoryTests {
         #expect(history.entries.isEmpty)
     }
 
-    @Test func keepsTheLatestEntries() {
+    @Test func keepsTheLatestEntries() throws {
         let history = ClipboardHistory(pasteboard: pasteboard, pinnedFile: nil)
 
         for index in 0...ClipboardHistory.maxEntries {
-            history.add(ClipboardEntry(items: [[.string: Data("\(index)".utf8)]])!)
+            history.add(try entry("\(index)"))
         }
 
         #expect(history.entries.count == ClipboardHistory.maxEntries)
@@ -154,7 +164,7 @@ struct ClipboardHistoryTests {
         copy("later")
         history.checkForChanges()
 
-        history.copy(history.entries[1])
+        history.copy(try entry(1, of: history))
 
         #expect(pasteboard.string(forType: .string) == "bold")
         #expect(pasteboard.data(forType: .rtf) == rich)
@@ -164,25 +174,25 @@ struct ClipboardHistoryTests {
         #expect(history.entries.count == 2)
     }
 
-    @Test func removesOneOrAll() {
+    @Test func removesOneOrAll() throws {
         let history = ClipboardHistory(pasteboard: pasteboard, pinnedFile: nil)
         for text in ["a", "b", "c"] {
-            history.add(ClipboardEntry(items: [[.string: Data(text.utf8)]])!)
+            history.add(try entry(text))
         }
 
-        history.remove(history.entries[1].id)
+        history.remove(try entry(1, of: history).id)
         #expect(titles(history) == ["c", "a"])
 
         history.removeAll()
         #expect(history.entries.isEmpty)
     }
 
-    private func entry(_ text: String) -> ClipboardEntry {
-        ClipboardEntry(items: [[.string: Data(text.utf8)]])!
+    private func entry(_ text: String) throws -> ClipboardEntry {
+        try #require(ClipboardEntry(items: [[.string: Data(text.utf8)]]))
     }
 
-    @Test func searchIgnoresCaseAndAccents() {
-        let note = entry("Café au lait at Noon")
+    @Test func searchIgnoresCaseAndAccents() throws {
+        let note = try entry("Café au lait at Noon")
 
         #expect(note.matches("cafe"))
         #expect(note.matches("NOON"))
@@ -190,44 +200,44 @@ struct ClipboardHistoryTests {
         #expect(!note.matches("tea"))
     }
 
-    @Test func searchLooksAtAllOfALongText() {
+    @Test func searchLooksAtAllOfALongText() throws {
         let text = String(repeating: "filler ", count: 1_000) + "needle"
 
-        #expect(entry(text).matches("needle"))
+        #expect(try entry(text).matches("needle"))
     }
 
-    @Test func pinnedCopiesStayOnTop() {
+    @Test func pinnedCopiesStayOnTop() throws {
         let history = ClipboardHistory(pasteboard: pasteboard, pinnedFile: nil)
         for text in ["a", "b", "c"] {
-            history.add(entry(text))
+            history.add(try entry(text))
         }
 
-        history.setPinned(history.entries[2].id, true)
-        history.add(entry("d"))
+        history.setPinned(try entry(2, of: history).id, true)
+        history.add(try entry("d"))
 
         #expect(titles(history) == ["a", "d", "c", "b"])
         #expect(history.entries.first?.isPinned == true)
     }
 
-    @Test func copyingAPinnedCopyAgainLeavesItPinned() {
+    @Test func copyingAPinnedCopyAgainLeavesItPinned() throws {
         let history = ClipboardHistory(pasteboard: pasteboard, pinnedFile: nil)
-        history.add(entry("pinned"))
-        history.setPinned(history.entries[0].id, true)
-        history.add(entry("other"))
+        history.add(try entry("pinned"))
+        history.setPinned(try entry(0, of: history).id, true)
+        history.add(try entry("other"))
 
-        history.add(entry("pinned"))
+        history.add(try entry("pinned"))
 
         #expect(titles(history) == ["pinned", "other"])
-        #expect(history.entries[0].isPinned)
+        #expect(try entry(0, of: history).isPinned)
     }
 
-    @Test func pinnedCopiesDontCountTowardsTheLimitAndSurviveClearing() {
+    @Test func pinnedCopiesDontCountTowardsTheLimitAndSurviveClearing() throws {
         let history = ClipboardHistory(pasteboard: pasteboard, pinnedFile: nil)
-        history.add(entry("keep"))
-        history.setPinned(history.entries[0].id, true)
+        history.add(try entry("keep"))
+        history.setPinned(try entry(0, of: history).id, true)
 
         for index in 0..<ClipboardHistory.maxEntries + 5 {
-            history.add(entry("\(index)"))
+            history.add(try entry("\(index)"))
         }
         #expect(history.entries.count == ClipboardHistory.maxEntries + 1)
         #expect(history.entries.first?.title == "keep")
@@ -236,14 +246,14 @@ struct ClipboardHistoryTests {
         #expect(titles(history) == ["keep"])
     }
 
-    @Test func unpinningMovesACopyBackAmongTheOthers() {
+    @Test func unpinningMovesACopyBackAmongTheOthers() throws {
         let history = ClipboardHistory(pasteboard: pasteboard, pinnedFile: nil)
         for text in ["a", "b"] {
-            history.add(entry(text))
+            history.add(try entry(text))
         }
-        history.setPinned(history.entries[1].id, true)
+        history.setPinned(try entry(1, of: history).id, true)
 
-        history.setPinned(history.entries[0].id, false)
+        history.setPinned(try entry(0, of: history).id, false)
 
         #expect(titles(history) == ["a", "b"])
         #expect(history.pinnedCount == 0)
@@ -253,16 +263,16 @@ struct ClipboardHistoryTests {
         let file = FileManager.default.temporaryDirectory.appending(path: "EyelidPinned-\(UUID().uuidString).plist")
         defer { try? FileManager.default.removeItem(at: file) }
         let history = ClipboardHistory(pasteboard: pasteboard, pinnedFile: file)
-        history.add(entry("forgotten"))
-        history.add(entry("remembered"))
-        history.setPinned(history.entries[0].id, true)
+        history.add(try entry("forgotten"))
+        history.add(try entry("remembered"))
+        history.setPinned(try entry(0, of: history).id, true)
 
         let relaunched = ClipboardHistory(pasteboard: pasteboard, pinnedFile: file)
 
         #expect(titles(relaunched) == ["remembered"])
         #expect(relaunched.entries.first?.isPinned == true)
 
-        relaunched.remove(relaunched.entries[0].id)
+        relaunched.remove(try entry(0, of: relaunched).id)
         #expect(!FileManager.default.fileExists(atPath: file.path(percentEncoded: false)))
     }
 }

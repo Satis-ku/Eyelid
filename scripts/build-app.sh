@@ -62,6 +62,11 @@ plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP/Contents/Inf
 plutil -replace CFBundleVersion -string "$BUILD_NUMBER" "$APP/Contents/Info.plist"
 echo "    Version $VERSION ($BUILD_NUMBER)"
 
+if [[ "$CONFIGURATION" == release ]]; then
+  # Debug symbols point at object files on the build machine, by their full paths, and aren't needed to run.
+  strip -S -x "$APP/Contents/MacOS/Eyelid"
+fi
+
 if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
   CODESIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/"Apple Development/ { print $2; exit }')"
 fi

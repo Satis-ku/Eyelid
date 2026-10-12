@@ -8,23 +8,24 @@ import UniformTypeIdentifiers
 /// macOS reports a new track a moment before its artwork. The notch shouldn't blink to the placeholder in between,
 /// and the title should show in the new artwork's colors.
 @MainActor
-@Suite("Artwork on its way")
+@Suite("Artwork on its way", .timeLimit(.minutes(1)))
 struct NowPlayingArtworkWaitTests {
     private final class Starts {
         var count = 0
     }
 
     private func png(red: CGFloat, green: CGFloat, blue: CGFloat) throws -> Data {
+        let colorSpace = try #require(CGColorSpace(name: CGColorSpace.sRGB))
         let context = try #require(CGContext(
             data: nil, width: 32, height: 32, bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ))
         context.setFillColor(red: red, green: green, blue: blue, alpha: 1)
         context.fill(CGRect(x: 0, y: 0, width: 32, height: 32))
         let data = NSMutableData()
         let destination = try #require(CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil))
         CGImageDestinationAddImage(destination, try #require(context.makeImage()), nil)
-        #expect(CGImageDestinationFinalize(destination))
+        try #require(CGImageDestinationFinalize(destination))
         return data as Data
     }
 
@@ -49,7 +50,8 @@ struct NowPlayingArtworkWaitTests {
     }
 
     private func service(_ starts: Starts) -> NowPlayingService {
-        let service = NowPlayingService(artworkGrace: 0.06, earlyTitleWait: 0.06)
+        // Whether players are heard can't be told here, so every start is reported.
+        let service = NowPlayingService(artworkGrace: 0.06, earlyTitleWait: 0.06, isAudible: { _ in nil })
         service.onPlaybackStart = {
             starts.count += 1
         }
@@ -88,7 +90,7 @@ struct NowPlayingArtworkWaitTests {
         service.apply(try snapshot("One", artist: "Band", album: "Album", duration: 200, elapsed: 0))
 
         service.apply(try snapshot("Two", artist: "Band", album: "Album", duration: 200, elapsed: 0))
-        try await Task.sleep(for: .milliseconds(250))
+        await service.earlyTitleTask?.value
 
         #expect(service.track?.title == "Two")
         #expect(starts.count == 2)
@@ -138,7 +140,7 @@ struct NowPlayingArtworkWaitTests {
         service.apply(try snapshot("One", artwork: try png(red: 0.9, green: 0.1, blue: 0.1)))
 
         service.apply(try snapshot("Two"))
-        try await Task.sleep(for: .milliseconds(250))
+        await service.artworkWait?.value
 
         #expect(!service.isAwaitingArtwork)
         #expect(service.track?.title == "Two")
@@ -154,7 +156,7 @@ struct NowPlayingArtworkWaitTests {
 
         service.apply(try snapshot("Two"))
         service.apply(try snapshot("Two", artwork: cover))
-        try await Task.sleep(for: .milliseconds(250))
+        await service.artworkWait?.value
 
         #expect(!service.isAwaitingArtwork)
         #expect(service.track?.artwork != nil)
@@ -202,21 +204,23 @@ struct NowPlayingArtworkWaitTests {
         // The pointer leaves and comes back, then the video opens: the same item, now heard.
         service.apply(try snapshot("Preview", playing: false))
         service.apply(try snapshot("Preview"))
+        let heard = try #require(service.audibleTask)
         sound.isOn = true
-        try await Task.sleep(for: .milliseconds(400))
+        await heard.value
         #expect(starts.count == 1)
         #expect(!service.isSilent)
     }
 
-    @Test func silentPlaybackThatStopsIsForgotten() async throws {
-        let starts = Starts()
+    /// A muted preview that stops is no longer waited on, and isn't silent anymore.
+    @Test func silentPlaybackThatStopsIsForgotten() throws {
         let service = NowPlayingService(artworkGrace: 0.06, earlyTitleWait: 0.06, isAudible: { _ in false })
-        service.onPlaybackStart = { starts.count += 1 }
 
         service.apply(try snapshot("Preview"))
-        service.apply(try snapshot("Preview", playing: false))
-        try await Task.sleep(for: .milliseconds(300))
+        #expect(service.audibleTask != nil)
+        #expect(service.isSilent)
 
-        #expect(starts.count == 0)
+        service.apply(try snapshot("Preview", playing: false))
+        #expect(service.audibleTask == nil)
+        #expect(service.isSilent == false)
     }
 }

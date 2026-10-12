@@ -13,6 +13,8 @@ final class AppSettings {
         static let showsTrackTitle = "showsTrackTitle"
         static let equalizerFollowsAudio = "equalizerFollowsAudio"
         static let isLiveActivityHidden = "isLiveActivityHidden"
+        static let showsClockWhenIdle = "showsClockWhenIdle"
+        static let showsDateInOpenNotch = "showsDateInOpenNotch"
         static let liveActivityShortcutEnabled = "liveActivityShortcutEnabled"
         static let liveActivityHotKey = "liveActivityHotKey"
         static let batteryActivityEnabled = "batteryActivityEnabled"
@@ -27,6 +29,12 @@ final class AppSettings {
         static let clipboardEnabled = "clipboardEnabled"
         static let clipboardHotKey = "clipboardHotKey"
         static let clipboardPastesAfterChoosing = "clipboardPastesAfterChoosing"
+        static let translatesOnDoubleCopy = "translatesOnDoubleCopy"
+        static let translationTarget = "translationTarget"
+        static let translationShortcutEnabled = "translationShortcutEnabled"
+        static let translationHotKey = "translationHotKey"
+        static let sectionOrder = "sectionOrder"
+        static let pinnedSections = "pinnedSections"
     }
 
     /// Delays offered in Settings, in seconds.
@@ -50,6 +58,17 @@ final class AppSettings {
     /// takes no more room in the menu bar than the camera. Volume, battery and output changes still show.
     var isLiveActivityHidden: Bool {
         didSet { defaults.set(isLiveActivityHidden, forKey: Key.isLiveActivityHidden) }
+    }
+
+    /// Whether the time and the battery show beside the closed notch while nothing plays, so it isn't bare. Off by
+    /// default.
+    var showsClockWhenIdle: Bool {
+        didSet { defaults.set(showsClockWhenIdle, forKey: Key.showsClockWhenIdle) }
+    }
+
+    /// Whether the open notch shows the date and time next to the battery.
+    var showsDateInOpenNotch: Bool {
+        didSet { defaults.set(showsDateInOpenNotch, forKey: Key.showsDateInOpenNotch) }
     }
 
     /// Whether `liveActivityHotKey` hides and shows the live activity.
@@ -137,6 +156,56 @@ final class AppSettings {
         didSet { defaults.set(clipboardPastesAfterChoosing, forKey: Key.clipboardPastesAfterChoosing) }
     }
 
+    /// Whether text copied twice in a row, with ⌘C pressed twice, shows translated in the notch. Off by default: it
+    /// reads what's copied, and macOS asks before letting it.
+    var translatesOnDoubleCopy: Bool {
+        didSet { defaults.set(translatesOnDoubleCopy, forKey: Key.translatesOnDoubleCopy) }
+    }
+
+    /// The language to translate into, by identifier, or nil for the user's own languages.
+    var translationTarget: String? {
+        didSet { defaults.set(translationTarget, forKey: Key.translationTarget) }
+    }
+
+    /// Whether `translationHotKey` opens the translator in the notch, to type or paste text.
+    var translationShortcutEnabled: Bool {
+        didSet { defaults.set(translationShortcutEnabled, forKey: Key.translationShortcutEnabled) }
+    }
+
+    /// The shortcut that opens the translator.
+    var translationHotKey: HotKey {
+        didSet { Self.store(translationHotKey, as: Key.translationHotKey, in: defaults) }
+    }
+
+    /// The open notch's sections in the order the user put them, every one of them.
+    var sectionOrder: [NotchSection] {
+        didSet { defaults.set(sectionOrder.map(\.rawValue), forKey: Key.sectionOrder) }
+    }
+
+    /// The sections in the dock at the bottom of the open notch, `NotchSection.maxPinned` at most. By default, the
+    /// first ones in order, up to that.
+    var pinnedSections: Set<NotchSection> {
+        didSet { defaults.set(sectionOrder.filter(pinnedSections.contains).map(\.rawValue), forKey: Key.pinnedSections) }
+    }
+
+    /// Pins a section to the dock or unpins it. Past the limit, a section isn't pinned.
+    func setPinned(_ section: NotchSection, _ isPinned: Bool) {
+        if isPinned {
+            guard pinnedSections.count < NotchSection.maxPinned else { return }
+            pinnedSections.insert(section)
+        } else {
+            pinnedSections.remove(section)
+        }
+    }
+
+    /// Moves a section to where `target` is, as dropping it on that row does: before it when moving up, after it when
+    /// moving down.
+    func moveSection(_ section: NotchSection, to target: NotchSection) {
+        guard let from = sectionOrder.firstIndex(of: section), let to = sectionOrder.firstIndex(of: target), from != to
+        else { return }
+        sectionOrder.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to)
+    }
+
     /// Whether every display shows a notch, rather than only `displayID` or the automatic choice.
     var notchOnAllDisplays: Bool {
         didSet { defaults.set(notchOnAllDisplays, forKey: Key.notchOnAllDisplays) }
@@ -165,8 +234,21 @@ final class AppSettings {
         clipboardPastesAfterChoosing = defaults.object(forKey: Key.clipboardPastesAfterChoosing) as? Bool ?? false
         clipboardHotKey = Self.hotKey(Key.clipboardHotKey, in: defaults) ?? .clipboardDefault
         isLiveActivityHidden = defaults.object(forKey: Key.isLiveActivityHidden) as? Bool ?? false
+        showsClockWhenIdle = defaults.object(forKey: Key.showsClockWhenIdle) as? Bool ?? false
+        showsDateInOpenNotch = defaults.object(forKey: Key.showsDateInOpenNotch) as? Bool ?? true
         liveActivityShortcutEnabled = defaults.object(forKey: Key.liveActivityShortcutEnabled) as? Bool ?? true
         liveActivityHotKey = Self.hotKey(Key.liveActivityHotKey, in: defaults) ?? .liveActivityDefault
+        translatesOnDoubleCopy = defaults.object(forKey: Key.translatesOnDoubleCopy) as? Bool ?? false
+        translationTarget = defaults.object(forKey: Key.translationTarget) as? String
+        translationShortcutEnabled = defaults.object(forKey: Key.translationShortcutEnabled) as? Bool ?? true
+        translationHotKey = Self.hotKey(Key.translationHotKey, in: defaults) ?? .translationDefault
+        let order = NotchSection.order(from: defaults.object(forKey: Key.sectionOrder) as? [String])
+        sectionOrder = order
+        if let pinned = defaults.object(forKey: Key.pinnedSections) as? [String] {
+            pinnedSections = Set(pinned.compactMap(NotchSection.init(rawValue:)).prefix(NotchSection.maxPinned))
+        } else {
+            pinnedSections = Set(order.prefix(NotchSection.maxPinned))
+        }
     }
 
     private static func store(_ hotKey: HotKey, as key: String, in defaults: any SettingsStore) {

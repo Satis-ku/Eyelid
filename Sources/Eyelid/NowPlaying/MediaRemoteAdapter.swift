@@ -60,17 +60,35 @@ struct MediaRemoteAdapter: Sendable {
 
     static let environment = ["PATH": "/usr/bin:/bin"]
 
+    /// Sends a command without waiting for the adapter to finish, which takes a moment as perl starts.
     func send(_ command: Command) {
-        Task.detached(priority: .userInitiated) {
-            let process = makeProcess(arguments: ["send", String(command.rawValue)])
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            do {
-                try process.run()
-                process.waitUntilExit()
-            } catch {
-                logger.error("Failed to send command \(command.rawValue): \(error.localizedDescription)")
+        run(["send", String(command.rawValue)])
+    }
+
+    /// Moves playback to `position`, in seconds from the start. Players that can't seek ignore it.
+    func seek(to position: TimeInterval) {
+        run(["seek", String(Self.micros(position))])
+    }
+
+    /// The position as the adapter takes it: whole microseconds, and none before the start.
+    static func micros(_ position: TimeInterval) -> Int64 {
+        Int64((max(position, 0) * 1_000_000).rounded())
+    }
+
+    private func run(_ arguments: [String]) {
+        let process = makeProcess(arguments: arguments)
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        let name = arguments.joined(separator: " ")
+        process.terminationHandler = { process in
+            if process.terminationStatus != 0 {
+                logger.error("\(name, privacy: .public) failed: \(process.terminationStatus)")
             }
+        }
+        do {
+            try process.run()
+        } catch {
+            logger.error("Failed to run \(name, privacy: .public): \(error.localizedDescription)")
         }
     }
 }

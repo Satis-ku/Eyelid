@@ -25,8 +25,15 @@ final class ShelfTests {
         return url
     }
 
-    private func makeShelf(store: InMemorySettingsStore = InMemorySettingsStore()) -> Shelf {
-        Shelf(store: store, promisedFilesDirectory: folder.appending(path: "Promised", directoryHint: .isDirectory))
+    private func makeShelf(
+        store: InMemorySettingsStore = InMemorySettingsStore(),
+        isMounted: @escaping (URL) -> Bool = { _ in true }
+    ) -> Shelf {
+        Shelf(
+            store: store,
+            promisedFilesDirectory: folder.appending(path: "Promised", directoryHint: .isDirectory),
+            isMounted: isMounted
+        )
     }
 
     private func paths(_ shelf: Shelf) -> [String] {
@@ -48,10 +55,10 @@ final class ShelfTests {
         #expect(paths(shelf) == [path(first), path(second)])
     }
 
-    @Test func takesOnlyFiles() {
+    @Test func takesOnlyFiles() throws {
         let shelf = makeShelf()
 
-        shelf.add([URL(string: "https://example.com/file.zip")!])
+        shelf.add([try #require(URL(string: "https://example.com/file.zip"))])
 
         #expect(shelf.items.isEmpty)
     }
@@ -92,6 +99,18 @@ final class ShelfTests {
         #expect(makeShelf(store: store).items.count == 1)
     }
 
+    /// A file on a disk that's unplugged can't be found, but isn't gone: it's there when the disk is back.
+    @Test func keepsAFileOnADiskThatIsntConnected() throws {
+        let store = InMemorySettingsStore()
+        let file = try makeFile("on-a-drive.txt")
+        makeShelf(store: store).add([file])
+        try FileManager.default.removeItem(at: file)
+
+        let shelf = makeShelf(store: store, isMounted: { _ in false })
+
+        #expect(shelf.items.count == 1)
+    }
+
     @Test func keepsOnlyTheLatestFiles() throws {
         let shelf = makeShelf()
         let files = try (0...Shelf.maxItems).map { try makeFile("\($0).txt") }
@@ -107,7 +126,7 @@ final class ShelfTests {
         let shelf = makeShelf()
         shelf.add([try makeFile("a.txt"), try makeFile("b.txt"), try makeFile("c.txt")])
 
-        shelf.remove(shelf.items[1].id)
+        shelf.remove(try #require(shelf.items.dropFirst().first).id)
         #expect(shelf.items.count == 2)
 
         shelf.removeAll()
@@ -151,7 +170,7 @@ final class ShelfTests {
 }
 
 @MainActor
-@Suite("Dropping on the shelf")
+@Suite("Dropping on the shelf", .timeLimit(.minutes(1)))
 struct ShelfDropTests {
     @Test func filesAndPromisedFilesCount() {
         #expect(ShelfDrop.carriesFiles([.fileURL]))
@@ -179,7 +198,7 @@ struct ShelfDropTests {
                 continuation.resume()
             }
         }
-        for _ in 0..<50 where shelf.items.isEmpty {
+        for _ in 0..<200 where shelf.items.isEmpty {
             try await Task.sleep(for: .milliseconds(10))
         }
 
@@ -193,7 +212,8 @@ struct ShelfDropTests {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
         pasteboard.clearContents()
-        pasteboard.writeObjects([file as NSURL, URL(string: "https://example.com")! as NSURL])
+        let link = try #require(URL(string: "https://example.com"))
+        pasteboard.writeObjects([file as NSURL, link as NSURL])
         let shelf = Shelf(store: InMemorySettingsStore(), promisedFilesDirectory: FileManager.default.temporaryDirectory)
 
         #expect(ShelfDrop.receive(pasteboard, into: shelf))

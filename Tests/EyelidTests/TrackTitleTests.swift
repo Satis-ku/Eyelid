@@ -57,6 +57,19 @@ struct TrackTitleTests {
         do { let isStart = starts.isStart(track(), at: now + .seconds(1) + PlaybackStarts.shortPause); #expect(isStart) }
     }
 
+    /// Players resend a paused track now and then: the pause still counts from when it began.
+    @Test func aPauseCountsFromItsStart() {
+        var starts = PlaybackStarts()
+        let now = ContinuousClock.now
+        starts.didReport(track())
+
+        _ = starts.isStart(track(isPlaying: false), at: now)
+        _ = starts.isStart(track(isPlaying: false), at: now + .seconds(9))
+
+        let isStart = starts.isStart(track(), at: now + PlaybackStarts.shortPause)
+        #expect(isStart)
+    }
+
     /// A muted preview plays and pauses as the pointer comes and goes, and is never heard, so never reported. Opening
     /// that video is still a start.
     @Test func unreportedTrackStaysAStartThroughShortPauses() {
@@ -133,9 +146,10 @@ struct TrackTitleTests {
 struct ArtworkColorTests {
     /// An image filled with one color, or with two side by side.
     private func image(_ colors: [(red: Double, green: Double, blue: Double)], width: Int = 64) throws -> CGImage {
+        let colorSpace = try #require(CGColorSpace(name: CGColorSpace.sRGB))
         let context = try #require(CGContext(
             data: nil, width: width, height: 64, bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ))
         let stripe = CGFloat(width) / CGFloat(colors.count)
         for (index, color) in colors.enumerated() {

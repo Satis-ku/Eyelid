@@ -14,6 +14,8 @@ struct AppSettingsTests {
         #expect(settings.showsTrackTitle)
         #expect(!settings.equalizerFollowsAudio)
         #expect(!settings.isLiveActivityHidden)
+        #expect(!settings.showsClockWhenIdle)
+        #expect(settings.showsDateInOpenNotch)
         #expect(settings.liveActivityShortcutEnabled)
         #expect(settings.liveActivityHotKey == .liveActivityDefault)
         #expect(settings.batteryActivityEnabled)
@@ -38,6 +40,8 @@ struct AppSettingsTests {
         settings.showsTrackTitle = false
         settings.equalizerFollowsAudio = true
         settings.isLiveActivityHidden = true
+        settings.showsClockWhenIdle = true
+        settings.showsDateInOpenNotch = false
         settings.liveActivityShortcutEnabled = false
         settings.liveActivityHotKey = HotKey(keyCode: 50, modifiers: 2048)
         settings.batteryActivityEnabled = false
@@ -60,6 +64,8 @@ struct AppSettingsTests {
         #expect(!relaunched.showsTrackTitle)
         #expect(relaunched.equalizerFollowsAudio)
         #expect(relaunched.isLiveActivityHidden)
+        #expect(relaunched.showsClockWhenIdle)
+        #expect(!relaunched.showsDateInOpenNotch)
         #expect(!relaunched.liveActivityShortcutEnabled)
         #expect(relaunched.liveActivityHotKey == HotKey(keyCode: 50, modifiers: 2048))
         #expect(!relaunched.batteryActivityEnabled)
@@ -99,6 +105,92 @@ struct AppSettingsTests {
     @Test func offeredDelaysStartWithInstantly() {
         #expect(AppSettings.openDelayOptions.first == 0)
         #expect(AppSettings.openDelayOptions == AppSettings.openDelayOptions.sorted())
+    }
+
+    // MARK: - Sections
+
+    @Test func sectionsStartInOrderAndAllPinned() {
+        let settings = AppSettings(defaults: InMemorySettingsStore())
+
+        #expect(settings.sectionOrder == NotchSection.allCases)
+        #expect(settings.pinnedSections == Set(NotchSection.allCases))
+    }
+
+    @Test func sectionOrderAndPinsAreKept() {
+        let store = InMemorySettingsStore()
+        let settings = AppSettings(defaults: store)
+
+        settings.moveSection(.sound, to: .nowPlaying)
+        settings.setPinned(.clipboard, false)
+
+        let reopened = AppSettings(defaults: store)
+        #expect(reopened.sectionOrder == [.sound, .nowPlaying, .shelf, .clipboard, .translation])
+        #expect(reopened.pinnedSections == [.sound, .nowPlaying, .shelf, .translation])
+    }
+
+    @Test func droppingASectionOnAnotherTakesItsPlace() {
+        let settings = AppSettings(defaults: InMemorySettingsStore())
+
+        settings.moveSection(.nowPlaying, to: .clipboard)
+        #expect(settings.sectionOrder == [.shelf, .clipboard, .nowPlaying, .sound, .translation])
+
+        settings.moveSection(.translation, to: .shelf)
+        #expect(settings.sectionOrder == [.translation, .shelf, .clipboard, .nowPlaying, .sound])
+    }
+
+    @Test func newSectionsJoinAtTheEndUnpinned() {
+        let store = InMemorySettingsStore()
+        store.set(["sound", "nowPlaying", "removedLongAgo"], forKey: "sectionOrder")
+        store.set(["sound"], forKey: "pinnedSections")
+
+        let settings = AppSettings(defaults: store)
+
+        #expect(settings.sectionOrder == [.sound, .nowPlaying, .shelf, .clipboard, .translation])
+        #expect(settings.pinnedSections == [.sound])
+    }
+
+    @Test func translationSettingsSurviveARelaunch() {
+        let store = InMemorySettingsStore()
+        let settings = AppSettings(defaults: store)
+        #expect(settings.translatesOnDoubleCopy == false)
+        #expect(settings.translationTarget == nil)
+        #expect(settings.translationShortcutEnabled)
+        #expect(settings.translationHotKey == .translationDefault)
+
+        let hotKey = HotKey(keyCode: 17, modifiers: 2048 | 256)
+        settings.translatesOnDoubleCopy = true
+        settings.translationTarget = "fr"
+        settings.translationShortcutEnabled = false
+        settings.translationHotKey = hotKey
+
+        let relaunched = AppSettings(defaults: store)
+        #expect(relaunched.translatesOnDoubleCopy)
+        #expect(relaunched.translationTarget == "fr")
+        #expect(relaunched.translationShortcutEnabled == false)
+        #expect(relaunched.translationHotKey == hotKey)
+
+        relaunched.translationTarget = nil
+        #expect(AppSettings(defaults: store).translationTarget == nil)
+    }
+
+    /// A shortcut stored in a shape this build doesn't read falls back to the default rather than to nothing.
+    @Test func aBrokenStoredShortcutIsTheDefault() {
+        let store = InMemorySettingsStore()
+        store.set(["keyCode": 6], forKey: "liveActivityHotKey")
+        store.set("⌥T", forKey: "translationHotKey")
+
+        let settings = AppSettings(defaults: store)
+
+        #expect(settings.liveActivityHotKey == .liveActivityDefault)
+        #expect(settings.translationHotKey == .translationDefault)
+    }
+
+    @Test(arguments: [
+        (nil, NotchSection.allCases),
+        (["sound", "sound", "shelf"], [.sound, .shelf, .nowPlaying, .clipboard, .translation]),
+    ] as [([String]?, [NotchSection])])
+    func everySectionIsInTheOrderOnce(stored: [String]?, expected: [NotchSection]) {
+        #expect(NotchSection.order(from: stored) == expected)
     }
 }
 
